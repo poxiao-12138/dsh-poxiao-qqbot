@@ -8,6 +8,7 @@
  * - 凭证复用 qq-voice-polish 设置页保存的 QQ_VOICE_POLISH_BREEZE；
  * - 只在私聊默认开启；群聊需要显式 groupVoice=true。
  */
+import { DEFAULT_VOICE_INSTRUCTIONS } from '../shared/voice-defaults.ts';
 import fs from 'node:fs';
 import path from 'node:path';
 import { MEDIA_ROOT } from '../media/media-cleaner.ts';
@@ -49,7 +50,7 @@ export function extractVoiceDirective(text: string): { text: string; directive: 
 
 const FALLBACK_VOICE_CONFIG: VoiceConfig = {
   enabled: false, mode: 'text', autoDefault: 'text', groupVoice: false, maxChars: 150,
-  fallbackText: true, instructions: '', voiceId: '', apiKey: '',
+  fallbackText: true, instructions: DEFAULT_VOICE_INSTRUCTIONS, voiceId: '', apiKey: '',
   baseURL: 'https://api.breeze.blue', timeoutMs: 30000,
   guidanceScale: 2.6, guidanceScaleEmotion: 3.5, fadeMs: 30, padMs: 1000,
   sampleRate: 16000, channels: 1, autoPunctuation: true, emotionMarkers: true,
@@ -139,17 +140,23 @@ export class VoiceService {
 
     let line = String(text ?? '').trim();
     let instructions = this.config.instructions;
+    let hasMarker = false;
     if (this.config.emotionMarkers) {
       const extracted = extractEmotionMarkers(line);
       line = extracted.text;
-      if (extracted.instructions) instructions = extracted.instructions;
+      hasMarker = Boolean(extracted.instructions);
+      if (hasMarker) instructions = extracted.instructions;
     }
+    if (this.unsuitable(line)) return 'skipped';
     if (this.config.polish && !checked) {
       const polished = await polishLine(line, instructions, this.config.polishPrompt, this.config.timeoutMs);
       if (polished !== null) {
         line = polished.text;
         if (polished.instructions) instructions = polished.instructions;
       }
+    } else if (this.config.emotionMarkers && !hasMarker) {
+      const direction = await polishLine(line, '', '', Math.min(this.config.timeoutMs, 5000), true);
+      if (direction?.instructions) instructions = direction.instructions;
     }
     line = this.config.autoPunctuation ? prepareText(line) : line.trim();
     if (this.unsuitable(line)) { logVoice(`skip: unsuitable chars=${[...line].length} max=${this.config.maxChars}`); return 'skipped'; }

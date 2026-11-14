@@ -595,11 +595,13 @@ it('游戏回执后的流式草稿不会抢先发送，最终只发送回执确�
 });
 
 it.each([
-  ['[[静默]]', undefined],
-  ['我没有想说的话。', undefined],
-  ['[[主动联系]]\n我刚想起你说的那个梗。', '我刚想起你说的那个梗。'],
-])('主动唤醒只投递明确选择发送的内容 (%s)', async (reply, expected) => {
+  ['[[静默]]', undefined, false],
+  ['我没有想说的话。', undefined, false],
+  ['[[主动联系]]\n我刚想起你说的那个梗。', '我刚想起你说的那个梗。', false],
+  ['[[主动联系]]\n我刚想起你说的那个梗。', '我刚想起你说的那个梗。', true],
+])('主动唤醒只投递明确选择发送的内容 (%s)', async (reply, expected, fail) => {
   const { outbound, bot } = setup();
+  if (fail) vi.mocked(bot.sendMarkdown).mockRejectedValueOnce(new Error('QQ rejected'));
   const session = { header: { id: 'sess-qq' } };
   outbound.routeSessionEvent(session, { type: 'turn/start', data: { turn: 1 } });
   outbound.routeSessionEvent(session, {
@@ -613,6 +615,7 @@ it.each([
     type: 'assistant/message', data: { message: { content: [{ type: 'text', text: reply }] } },
   });
   outbound.routeSessionEvent(session, { type: 'turn/end', data: { turn: 1, reason: { kind: 'completed' } } });
+  await new Promise<void>((resolve) => setImmediate(resolve));
   expect(bot.openStream).not.toHaveBeenCalled();
   if (expected) {
     expect(bot.sendMarkdown).toHaveBeenCalledExactlyOnceWith(

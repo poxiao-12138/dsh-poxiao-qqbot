@@ -1,6 +1,3 @@
-/**
- * dsh-im-qqbot 插件配置 Schema
- */
 import Schema from '@deepseek-ai/schemastery';
 export interface AccessControlConfig {
     /** C2C 访问模式 */

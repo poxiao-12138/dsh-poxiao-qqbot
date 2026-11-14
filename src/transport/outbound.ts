@@ -1,10 +1,11 @@
+import { extractEmotionMarkers } from '../voice/emotion.ts';
 /**
  * 出站处理器 — dsh session/event → QQ 消息发送
  *
  * 采用路由器模式：OutboundRouter 持有会话级状态（文本缓冲、工具调用记录），
  * 事件解析归一化在 events.ts，路由按事件类型分发到私有方法。
  */
-import { proactiveText } from '../gateway/proactive-wake.ts';
+import { logProactiveWake, proactiveText } from '../gateway/proactive-wake.ts';
 import type { SessionManager, SessionRecord } from '../session/index.ts';
 import type { ImQQBotConfig } from '../config.ts';
 import type { Logger, ReplyTarget } from '../types.ts';
@@ -237,7 +238,15 @@ class OutboundRouter {
   private async onMessage(sessionId: string, plan: DeliveryPlan, event: MessageEvent): Promise<void> {
     if (plan.idleWake) {
       const text = proactiveText(event.content.filter((block) => block.type === 'text').map((block) => block.text).join('\n'));
-      if (text) this.trackText(sessionId, this.deliverText(plan, text, 'sendMarkdown'));
+      if (text) {
+        logProactiveWake('模型选择联系，开始投递');
+        this.trackText(sessionId, this.deliverText(plan, text, 'sendMarkdown').catch(() => {
+          logProactiveWake('投递异常');
+        }));
+      } else {
+        const reply = event.content.filter((block) => block.type === 'text').map((block) => block.text).join('\n').trim();
+        logProactiveWake(reply === '[[静默]]' ? '模型选择静默' : '未生成符合发送格式的消息');
+      }
       return;
     }
     const buffer = this.buffers.get(sessionId);
@@ -293,6 +302,7 @@ class OutboundRouter {
         || (parsed.directive === null && voice.autoDefault === 'voice');
       if (wantVoice) {
         const result = await this.voiceService.sendVoice(this.media ?? (this.bot as unknown as MediaSenderLike), plan.target, line, checked);
+        if (plan.idleWake) logProactiveWake(`语音投递结果=${result}`);
         if (result === 'sent') {
           if (voice.mode === 'voiceOnly' || auto) return;
         } else if (!voice.fallbackText) {
@@ -300,7 +310,10 @@ class OutboundRouter {
         }
       }
     }
-    await this.send(plan.target, line, tag);
+    const withoutDirection = extractEmotionMarkers(line);
+    if (withoutDirection.instructions) line = withoutDirection.text;
+    const delivered = await this.send(plan.target, line, tag);
+    if (plan.idleWake) logProactiveWake(delivered ? 'QQ 文字投递成功' : 'QQ 文字投递未全部成功');
   }
 
   /** 记录每会话最后一笔在途文本任务（自身吞错：错误已由 send/flush 内部记录） */
@@ -395,6 +408,7 @@ class OutboundRouter {
     const failure = extractTurnError(event.reason);
     void (async () => {
       await Promise.all([flushTask, pending]);
+      if (plan?.idleWake) logProactiveWake(`唤醒回合结束 kind=${event.reason.kind}`);
       if (plan !== undefined && !plan.idleWake && failure !== undefined && !SILENT_TURN_ERROR_CODES.has(failure.code)) {
         await this.send(plan.target, `⚠️ 本轮异常结束\n\`${failure.code}\`: ${failure.message}`, 'sendTurnEndError');
       }
@@ -406,15 +420,18 @@ class OutboundRouter {
   }
 
   /** 统一发送：切分 + 逐 chunk 发送 + 错误记录 */
-  private async send(target: ReplyTarget, text: string, tag: string): Promise<void> {
+  private async send(target: ReplyTarget, text: string, tag: string): Promise<boolean> {
     const chunks = chunkMarkdownText(text, this.config.textChunkLimit);
+    let delivered = chunks.length > 0;
     for (const chunk of chunks) {
       try {
         await this.bot.sendMarkdown(target, chunk);
       } catch (err) {
+        delivered = false;
         this.logger.error(`im-qqbot: ${tag} failed: ${err instanceof Error ? err.message : String(err)}`);
       }
     }
+    return delivered;
   }
 }
 

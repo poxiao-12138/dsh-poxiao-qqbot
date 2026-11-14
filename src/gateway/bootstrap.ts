@@ -1,5 +1,5 @@
 import { createUserMessage } from '@deepseek-ai/dsh-llm';
-import { ProactiveWake, proactiveProbability, PROACTIVE_WAKE_PROMPT, PROACTIVE_WAKE_SOURCE } from './proactive-wake.ts';
+import { logProactiveWake, ProactiveWake, proactiveProbability, PROACTIVE_WAKE_PROMPT, PROACTIVE_WAKE_SOURCE } from './proactive-wake.ts';
 import { DEFAULT_WAKE_BATCH_SECONDS } from '../shared/bind-protocol.ts';
 import type { DownloadedFile } from '../transport/attachment.ts';
 import { WakeBatcher } from '../transport/wake-batcher.ts';
@@ -93,26 +93,34 @@ export async function bootstrapGateway(
 
   const proactiveWake = new ProactiveWake(async (peer, lastIncoming) => {
     try {
-      if (!mayWake(peer)) return;
+      if (!mayWake(peer)) { logProactiveWake('跳过：离线、已关闭或不具备主人私聊权限'); return; }
       const now = Date.now();
       const replies = recentReplies.get(peer) ?? [];
       const probability = proactiveProbability(now - lastIncoming, new Date(now).getHours(),
         replies.filter((time) => now - time < 60 * 60_000).length,
         replies.some((time) => now - time < 30 * 60_000));
-      if (Math.random() >= probability || manager.getSessionRecord('c2c', peer)?.agent.status === 'running') return;
-      if (!manager.hasSavedPrivateSession(peer)) return;
+      if (!probability) { logProactiveWake('跳过：闲置不足 15 分钟'); return; }
+      if (manager.getSessionRecord('c2c', peer)?.agent.status === 'running') {
+        logProactiveWake('跳过：会话正在处理消息'); return;
+      }
+      if (Math.random() >= probability) { logProactiveWake(`跳过：随机未抽中 probability=${probability}`); return; }
+      if (!manager.hasSavedPrivateSession(peer)) { logProactiveWake('跳过：没有已保存的私聊会话'); return; }
       const record = manager.getSessionRecord('c2c', peer)
         ?? await manager.getOrCreate('c2c', peer, peer, { scope: 'c2c', targetId: peer });
-      if (!mayWake(peer) || !proactiveWake.isCurrent(peer, lastIncoming) || record.agent.status !== 'idle') return;
+      if (!mayWake(peer) || !proactiveWake.isCurrent(peer, lastIncoming) || record.agent.status !== 'idle') {
+        logProactiveWake('跳过：恢复会话期间状态变化'); return;
+      }
       record.agent.followup(createUserMessage({
         source: { kind: 'plugin', plugin: PROACTIVE_WAKE_SOURCE, form: 'notice', summary: '私聊主动联系机会' },
         content: [{ type: 'text', text: PROACTIVE_WAKE_PROMPT }],
       }));
+      logProactiveWake('已提交私聊唤醒');
       logger.info('im-qqbot: 主动联系检查已唤醒私聊');
     } catch (error) {
+      logProactiveWake('唤醒提交失败');
       logger.warn(`im-qqbot: 主动联系检查失败: ${error instanceof Error ? error.message : String(error)}`);
     }
-  });
+  }, Math.random, logProactiveWake);
   const recentReplies = new Map<string, number[]>();
   const wakeSeconds = config.wakeBatchSeconds ?? DEFAULT_WAKE_BATCH_SECONDS;
   const wakeBatcher = new WakeBatcher<MiddlewareContext>(wakeSeconds * 1000, async (messages) => {
@@ -297,9 +305,16 @@ export async function bootstrapGateway(
     connected = true;
     if (config.proactiveWakeEnabled !== false) {
       const owners = manager.accountAccess?.pairStatus().owners ?? [];
+      let scheduled = 0;
       for (const { openid } of owners) {
-        if (mayWake(openid) && manager.hasSavedPrivateSession(openid)) proactiveWake.watch(openid);
+        if (mayWake(openid) && manager.hasSavedPrivateSession(openid)) {
+          proactiveWake.watch(openid);
+          scheduled++;
+        }
       }
+      logProactiveWake(`机器人在线，符合检查条件的私聊数=${scheduled}`);
+    } else {
+      logProactiveWake('机器人在线，主动联系已关闭');
     }
     console.log(`[im-qqbot] Bot ready! appId=${config.appId}`);
   });

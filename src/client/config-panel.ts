@@ -1,3 +1,4 @@
+import { DEFAULT_VOICE_INSTRUCTIONS } from '../shared/voice-defaults.ts';
 import { ReleaseNotice } from './release-notice.ts';
 import { WorldSettings } from './world-settings.ts';
 /**
@@ -130,6 +131,7 @@ type AccessMode = AccessControlWire['c2cMode'];
 /** 语音配置的默认草稿（表单首次渲染用；实际值以服务端回显为准） */
 const DEFAULT_VOICE: NonNullable<ConfigWire['voice']> = {
   enabled: false, mode: 'voiceOnly', autoDefault: 'text', groupVoice: false, maxChars: 150, fallbackText: true,
+  instructions: DEFAULT_VOICE_INSTRUCTIONS,
   guidanceScale: 2.6, guidanceScaleEmotion: 3.5, fadeMs: 30, padMs: 1000,
   sampleRate: 16000, channels: 1, autoPunctuation: true, emotionMarkers: true,
   polish: false, polishPrompt: '', retries: 2, outputFormat: 'wav',
@@ -495,7 +497,7 @@ export function ConfigPanel({ bindPhase }: ConfigPanelProps = {}): ReactNode {
             createElement('div', { className: 'imqb2-field' },
               createElement('label', { className: 'imqb2-label', htmlFor: 'imqq-voice-instructions' }, '默认表演指令（可空）'),
               createElement('textarea', { id: 'imqq-voice-instructions', className: 'imqb2-textarea', rows: 2,
-                value: form.voice?.instructions ?? '',
+                value: form.voice?.instructions ?? DEFAULT_VOICE_INSTRUCTIONS,
                 onChange: (event: React.ChangeEvent<HTMLTextAreaElement>) =>
                   patch('voice', { ...(form.voice ?? DEFAULT_VOICE), instructions: event.target.value } as never) })),
             createElement('details', { className: 'imqb2-details' },
@@ -503,8 +505,8 @@ export function ConfigPanel({ bindPhase }: ConfigPanelProps = {}): ReactNode {
               createElement(Switch, { label: '语音不可用时发送文字', checked: form.voice?.fallbackText ?? true,
                 onChange: (value: boolean) => patch('voice', { ...(form.voice ?? DEFAULT_VOICE), fallbackText: value }) }),
               ...([
-                ['guidanceScale', '情绪强度（无情绪时）', 0.5, 10, 0.1],
-                ['guidanceScaleEmotion', '情绪强度（有情绪时）', 0.5, 10, 0.1],
+                ['guidanceScale', '引导强度（无表演指令）', 0.5, 10, 0.1],
+                ['guidanceScaleEmotion', '引导强度（有表演指令）', 0.5, 10, 0.1],
                 ['fadeMs', '尾部淡出 (ms)', 0, 200, 1],
                 ['padMs', '尾部静音 (ms)', 0, 3000, 50],
                 ['sampleRate', '采样率', 8000, 48000, 1000],

@@ -37,7 +37,7 @@ const isBaseline = (specifier: string): boolean =>
 export default defineConfig({
   name: `${ID}/client`,
   entry: { client: 'src/client/index.ts' },
-  outDir: 'lib',
+  outDir: process.env.DSH_QQBOT_CLIENT_OUT_DIR ?? 'lib',
   format: 'cjs',
   platform: 'browser',
   target: 'es2022',

@@ -7,7 +7,7 @@
 1. 在 DSH 打开 **插件 → 添加插件**，粘贴下面的安装地址。
 
    ```text
-   https://gitee.com/poxiao12138/dsh-poxiao-qqbot/raw/v0.2.14/releases/dsh-poxiao-qqbot-0.2.14.tgz
+   https://gitee.com/poxiao12138/dsh-poxiao-qqbot/raw/v0.2.19/releases/dsh-poxiao-qqbot-0.2.19.tgz
    ```
 
 2. 安装并启用后，在 **设置 → QQ 机器人** 完成绑定，再把自己的 QQ 账号加入私聊白名单。

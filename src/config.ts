@@ -1,6 +1,7 @@
 /**
  * dsh-im-qqbot 插件配置 Schema
  */
+import { DEFAULT_VOICE_INSTRUCTIONS } from './shared/voice-defaults.ts';
 import Schema from '@deepseek-ai/schemastery';
 import { DEFAULT_WAKE_BATCH_SECONDS } from './shared/bind-protocol.ts';
 
@@ -228,7 +229,7 @@ export const VoiceSchema: Schema<VoiceConfig> = Schema.object({
     groupVoice: Schema.boolean().default(false).description('群聊是否也发语音（默认只私聊）'),
     maxChars: Schema.number().default(150).description('单条语音最大字数，超长回落文字'),
     fallbackText: Schema.boolean().default(true).description('合成/发送失败时是否回落文字'),
-    instructions: Schema.string().default('').description('默认表演指令（可空）'),
+    instructions: Schema.string().default(DEFAULT_VOICE_INSTRUCTIONS).description('默认表演指令（可空）'),
     voiceId: Schema.string().default('').description('覆盖 Breeze 音色（空则用凭证里的 voiceId）'),
     apiKey: Schema.string().default('').description('覆盖 Breeze API Key（空则读 QQ_VOICE_POLISH_BREEZE）'),
     baseURL: Schema.string().default('https://api.breeze.blue').description('Breeze API 根地址'),
@@ -252,7 +253,7 @@ export const VoiceSchema: Schema<VoiceConfig> = Schema.object({
     groupVoice: false,
     maxChars: 150,
     fallbackText: true,
-    instructions: '',
+    instructions: DEFAULT_VOICE_INSTRUCTIONS,
     voiceId: '',
     apiKey: '',
     baseURL: 'https://api.breeze.blue',

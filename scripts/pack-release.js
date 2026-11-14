@@ -13,7 +13,6 @@ if (!/^\d+\.\d+\.\d+$/.test(version ?? '')) {
 
 execFileSync(process.execPath, [process.env.npm_execpath, 'run', 'build'], {
   cwd: root,
-  env: { ...process.env, DSH_QQBOT_RELEASE_NAME: releaseName },
   stdio: 'inherit',
 });
 mkdirSync(output, { recursive: true });
@@ -35,6 +34,15 @@ try {
     bugs: { url: `${repository}/issues` },
   });
   writeFileSync(join(staging, 'package.json'), JSON.stringify(manifest, null, 2) + '\n');
+  execFileSync(process.execPath, [process.env.npm_execpath, 'run', 'build:client'], {
+    cwd: root,
+    env: {
+      ...process.env,
+      DSH_QQBOT_RELEASE_NAME: releaseName,
+      DSH_QQBOT_CLIENT_OUT_DIR: join(staging, 'lib'),
+    },
+    stdio: 'inherit',
+  });
   const client = readFileSync(join(staging, 'lib/client.js'), 'utf8');
   const registration = /^window\.__ModuleLoader__\.load\(\{\s*id:\s*("(?:[^"\\]|\\.)*"),/.exec(client);
   if (!registration || JSON.parse(registration[1]) !== manifest.name) {

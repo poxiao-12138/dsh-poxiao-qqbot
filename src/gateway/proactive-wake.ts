@@ -1,3 +1,14 @@
+import { appendFileSync, mkdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { PLUGIN_HOME } from '../shared/dirs.ts';
+
+export function logProactiveWake(event: string): void {
+  try {
+    mkdirSync(PLUGIN_HOME, { recursive: true, mode: 0o700 });
+    appendFileSync(join(PLUGIN_HOME, 'proactive-wake.log'), `[${new Date().toISOString()}] ${event}\n`, { mode: 0o600 });
+  } catch { /* 诊断记录不影响对话 */ }
+}
+
 const MINUTE = 60_000;
 
 export const PROACTIVE_WAKE_SOURCE = 'im-qqbot.proactive-wake';
@@ -23,6 +34,7 @@ export class ProactiveWake {
   constructor(
     private readonly check: (peer: string, lastIncoming: number) => void | Promise<void>,
     private readonly random = Math.random,
+    private readonly report: (event: string) => void = () => {},
   ) {}
 
   watch(peer: string): void {
@@ -42,6 +54,7 @@ export class ProactiveWake {
 
   private schedule(peer: string, state: { lastIncoming: number; timer?: ReturnType<typeof setTimeout> }): void {
     const delay = Math.floor((30 + 60 * this.random()) * MINUTE);
+    this.report(`已安排检查 next=${new Date(Date.now() + delay).toISOString()}`);
     state.timer = setTimeout(() => {
       this.schedule(peer, state);
       void this.check(peer, state.lastIncoming);
