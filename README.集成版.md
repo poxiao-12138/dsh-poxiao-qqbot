@@ -12,7 +12,7 @@ npm test
 用 DSH 已配置的本机链接加载开发版。客户端构建后，重开 DSH 即可查看设置页改动。
 
 ```sh
-npm run pack:release -- 0.2.19
+npm run pack:release -- 0.2.21
 ```
 
 打包命令会构建当前代码，把发布包放到工程内的 `releases/`。历史安装包保存在 `releases/archive/`。
@@ -27,7 +27,3 @@ npm run pack:release -- 0.2.19
 4. **推送后**：核对 Gitee 默认分支、版本标签和下载链接。用 Git 重装的用户拿的是默认分支，发标签时也要检查分支上的版本和前端产物。
 
 QQ 接入和宿主调试细节见 [上游项目](https://github.com/tencent-connect/dsh-qqbot)。
-
-## 安装（给最终用户）
-
-设置页安装和公开安装包地址见 [主 README](./README.md)。通过 Git 仓库地址安装会读取所选提交的包名和版本。
