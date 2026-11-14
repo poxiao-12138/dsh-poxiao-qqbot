@@ -1,0 +1,64 @@
+{
+  "samples": [
+    {
+      "voiceId": "voc_6t8vrjmcq4cy",
+      "name": "大肥鱼",
+      "identity": "女儿",
+      "text": "爸爸，我回来啦。[轻笑] 今天也有想你哦。",
+      "instructions": "女儿对爸爸撒娇，开心又亲近，尾音软下来。",
+      "guidance": 3.2,
+      "file": "voc_6t8vrjmcq4cy.mp3",
+      "size": 42284
+    },
+    {
+      "voiceId": "voc_u3nxkd5578wc",
+      "name": "大肥鱼·机灵版",
+      "identity": "女儿（机灵）",
+      "text": "嘿嘿，猜猜我今天遇到什么好事啦？[轻笑] 先不告诉你。",
+      "instructions": "机灵地卖关子，带着笑，语速轻快。",
+      "guidance": 3.2,
+      "file": "voc_u3nxkd5578wc.mp3",
+      "size": 41708
+    },
+    {
+      "voiceId": "voc_8yud7hz7c9q2",
+      "name": "大肥鱼·迷糊版",
+      "identity": "女儿（迷糊）",
+      "text": "唔……刚才想说什么来着？[轻笑] 算了，先抱一下。",
+      "instructions": "慢半拍、迷迷糊糊地撒娇，声音软。",
+      "guidance": 3,
+      "file": "voc_8yud7hz7c9q2.mp3",
+      "size": 60140
+    },
+    {
+      "voiceId": "voc_88a7brnfb4tb",
+      "name": "御姐",
+      "identity": "御姐",
+      "text": "回来了？先坐，喝口水再说。[轻笑] 不急。",
+      "instructions": "成熟从容，关心但不黏，语速稳。",
+      "guidance": 2.8,
+      "file": "voc_88a7brnfb4tb.mp3",
+      "size": 37868
+    },
+    {
+      "voiceId": "voc_dcccp6b9p466",
+      "name": "大姐姐",
+      "identity": "大姐姐",
+      "text": "小笨蛋，又熬夜了对吧？[轻笑] 过来，说说。",
+      "instructions": "姐姐式调侃，带笑，语气亲近。",
+      "guidance": 3,
+      "file": "voc_dcccp6b9p466.mp3",
+      "size": 49388
+    },
+    {
+      "voiceId": "voc_2g2xfx23838q",
+      "name": "大小姐",
+      "identity": "大小姐",
+      "text": "哼，本小姐今天心情不错，[轻笑] 允许你陪我说说话。",
+      "instructions": "傲娇，先端着再忍不住笑，尾音收得矜持。",
+      "guidance": 3.2,
+      "file": "voc_2g2xfx23838q.mp3",
+      "size": 37100
+    }
+  ]
+}

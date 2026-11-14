@@ -1,0 +1,1 @@
+{"version":3,"file":"user-blocks.d.ts","sourceRoot":"","sources":["../../src/prompt/user-blocks.ts"],"names":[],"mappings":"AAAA;;;GAGG;AACH,MAAM,WAAW,cAAc;IAC7B,0BAA0B;IAC1B,IAAI,EAAE,MAAM,CAAC;CACd;AAED,8BAA8B;AAC9B,wBAAgB,kBAAkB,CAAC,KAAK,EAAE,cAAc,GAAG,MAAM,EAAE,CAElE"}

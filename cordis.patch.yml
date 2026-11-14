@@ -1,0 +1,64 @@
+# dsh-im-qqbot bundle patch
+#
+# 当本包通过 `dsh plugin --profile <name> add @tencent-connect/dsh-qqbot` 安装后，
+# dsh 启动时自动加载此 patch。
+#
+# 环境变量：
+#   QQBOT_APPID  - QQ Bot AppID（必填）
+#   QQBOT_SECRET - QQ Bot AppSecret（必填）
+#
+# 叠加顺序：dsh-base → 本 bundle patch → profile cordis.patch.yml → --patch
+
+# ── 插入 im-qqbot 插件行 ──
+- insert:
+    - id: im-qqbot
+      name: 'dsh-qqbot-integrated'
+      config:
+        appId: __FROM_ENV__
+        appSecret: __FROM_ENV__
+        # provider/model 留空：从宿主默认模型路由继承
+        # 用户可通过 /model 命令在聊天中切换
+        requireMention: true
+        textChunkLimit: 4500
+        sessionIdleTimeout: 1800000
+        maxQueue: 20
+        processingTimeoutMs: 1800000
+        historyLimit: 10
+        debug: false
+        # 默认使用安全工作模式（无本地执行/文件工具）；需要本地能力可在设置里换 preset
+        preset: qqbot-safe
+        # 渠道级语音：新安装默认纯文字；填好 Breeze 凭证后可在设置页开启
+        voice:
+          enabled: false
+          mode: voiceOnly
+          groupVoice: false
+          maxChars: 150
+          fallbackText: true
+
+# ── QQ 安全默认 preset：聊天可用，但无本地执行/文件/编排工具 ──
+- insert:
+    - id: preset-qqbot-safe
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: qqbot-safe
+        name: QQ 安全默认
+        description: 聊天与记忆可用；不包含本地 shell/文件/编排工具。需要本地能力请换其他 preset。
+        order: 16
+        plugins:
+          - id: qqbot-safe-guard
+            name: 'dsh-qqbot-integrated/guard'
+          - id: tool-ask-user
+            name: '@deepseek-ai/dsh-tool-ask-user'
+          - id: tool-todo
+            name: '@deepseek-ai/dsh-tool-todo'
+          - id: compaction
+            name: cordis:group
+            config:
+              name: compaction
+              children:
+                - id: compaction-basic
+                  name: '@deepseek-ai/dsh-compaction-basic'
+                - id: command-compact
+                  name: '@deepseek-ai/dsh-command-compact'
+                - id: tool-result-pruner
+                  name: '@deepseek-ai/dsh-compaction-tool-result-pruner'
