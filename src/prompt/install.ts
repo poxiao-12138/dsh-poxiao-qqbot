@@ -8,6 +8,7 @@
 import type { Context } from '@deepseek-ai/cordis';
 // 空导入：仅触发 dsh-agent 的类型声明副作用；勿引入 dsh-tools（8 个 peer 依赖，见 vision-tool.ts）
 import type {} from '@deepseek-ai/dsh-agent';
+import { HUMMING_PROMPT } from '../voice/emotion.ts';
 import type { QQScope } from './scope.ts';
 import { RULES_SECTION_NAME, RULES_ORDER, RULES_TEXT } from './rules.ts';
 import { PERSONA_SECTION_NAME, PERSONA_ORDER, selectPersonaText } from './persona.ts';
@@ -25,6 +26,7 @@ export interface QQPromptEntry {
   readonly scope: QQScope;
   /** 人设 role-card markdown（可为空）。 */
   personaCard(): string;
+  voiceAvailable?(): boolean;
   /** 补充提示词（群/私分字段）。 */
   extraPrompts(): { group?: string; direct?: string };
   /** Read only the current turn's verified input; queued and previous turns return nothing. */
@@ -42,7 +44,10 @@ export function installQQPrompt(agentCtx: Context, entry: QQPromptEntry): QQProm
   if (service === undefined) throw new Error('当前宿主缺少 systemPrompt 服务，无法注入 QQ prompt');
 
   const disposers: Array<() => void> = [];
-  disposers.push(service.section({ name: RULES_SECTION_NAME, order: RULES_ORDER, text: RULES_TEXT }));
+  disposers.push(service.section({
+    name: RULES_SECTION_NAME, order: RULES_ORDER,
+    text: () => entry.voiceAvailable?.() ? RULES_TEXT + '\n' + HUMMING_PROMPT : RULES_TEXT,
+  }));
   disposers.push(service.section({ name: PERSONA_SECTION_NAME, order: PERSONA_ORDER, text: () => selectPersonaText(entry.personaCard(), entry.scope) }));
   disposers.push(service.section({ name: EXTRA_SECTION_NAME, order: EXTRA_ORDER, text: () => selectExtraPrompt(entry.extraPrompts(), entry.scope) }));
   // The Host claims its inbox before assembly, but appends user/message only after

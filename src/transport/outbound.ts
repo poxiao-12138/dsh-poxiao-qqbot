@@ -1,4 +1,4 @@
-import { extractEmotionMarkers } from '../voice/emotion.ts';
+import { extractEmotionMarkers, extractHummingMarker } from '../voice/emotion.ts';
 /**
  * 出站处理器 — dsh session/event → QQ 消息发送
  *
@@ -312,6 +312,8 @@ class OutboundRouter {
     }
     const withoutDirection = extractEmotionMarkers(line);
     if (withoutDirection.instructions) line = withoutDirection.text;
+    line = extractHummingMarker(line).text;
+    if (!line) return;
     const delivered = await this.send(plan.target, line, tag);
     if (plan.idleWake) logProactiveWake(delivered ? 'QQ 文字投递成功' : 'QQ 文字投递未全部成功');
   }

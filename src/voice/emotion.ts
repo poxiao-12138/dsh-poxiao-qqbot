@@ -15,3 +15,13 @@ export function extractEmotionMarkers(text: string): { text: string; instruction
     .trim();
   return { text: cleaned, instructions: found.join('；') };
 }
+
+const HUMMING_MARKER = '[[轻哼]]';
+const LEGACY_HUMMING_TAG = '[哼歌]';
+export const HUMMING_INSTRUCTIONS = '很轻地哼给自己听，跑调也不在乎，气声多，语速慢';
+export const HUMMING_PROMPT = '对方想听你唱两句、哼一段或用歌声哄睡时，用语音轻哼。回复以 [[语音]] 开头，下一行先写 ' + HUMMING_MARKER + ' 再写台词。根据当下情境写一两行短句，可以先哼两声「嗯——嗯——」。直接开始，不加解释或情绪标记，语音插件会配轻哼指令。';
+
+export function extractHummingMarker(text: string): { text: string; humming: boolean } {
+  const clean = text.replaceAll(HUMMING_MARKER, '').replaceAll(LEGACY_HUMMING_TAG, '');
+  return { text: clean.trim(), humming: clean !== text };
+}

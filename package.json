@@ -1,6 +1,6 @@
 {
   "name": "dsh-qqbot-integrated",
-  "version": "0.2.21",
+  "version": "0.2.23",
   "icon": "./assets/icons/qq_logo.svg",
   "description": "DSH 官方 QQ 机器人集成版：内置 Breeze 渠道级语音（私聊自动语音条），预留人格/功能扩展。",
   "type": "module",

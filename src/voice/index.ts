@@ -17,7 +17,7 @@ import type { ImQQBotConfig, VoiceConfig } from '../config.ts';
 import type { Logger, ReplyTarget } from '../types.ts';
 import { readVoiceCredentials, type VoiceCredentials } from './credentials.ts';
 import { prepareText, synthesizeBreeze } from './breeze.ts';
-import { extractEmotionMarkers } from './emotion.ts';
+import { extractEmotionMarkers, extractHummingMarker, HUMMING_INSTRUCTIONS } from './emotion.ts';
 import { polishLine } from './polish.ts';
 import { processWav, toMp3, toSilk } from './audio.ts';
 
@@ -106,7 +106,7 @@ export class VoiceService {
   }
 
   /** 合成（带重试），返回 wav Buffer */
-  private async synthesize(text: string, instructions: string, credentials: VoiceCredentials): Promise<Buffer> {
+  private async synthesize(text: string, instructions: string, credentials: VoiceCredentials, humming: boolean): Promise<Buffer> {
     const attempts = Math.max(0, Math.min(5, Math.floor(this.config.retries))) + 1;
     let lastError: unknown;
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
@@ -119,7 +119,8 @@ export class VoiceService {
           maxChars: this.config.maxChars,
           gracefulness: this.config.guidanceScale,
           guidanceScaleEmotion: this.config.guidanceScaleEmotion,
-          timeoutMs: this.config.timeoutMs,
+          // 轻哼试听可能超过普通语音的 30 秒超时。
+          timeoutMs: humming ? Math.max(this.config.timeoutMs, 80000) : this.config.timeoutMs,
         });
       } catch (error) {
         lastError = error;
@@ -138,17 +139,20 @@ export class VoiceService {
     if (sender === undefined) { logVoice('skip: no media sender'); return 'skipped'; }
     if (!this.applicable(target.scope)) { logVoice('skip: not applicable (disabled/no credentials/group off)'); return 'skipped'; }
 
-    let line = String(text ?? '').trim();
+    const hummingLine = extractHummingMarker(String(text ?? ''));
+    let line = hummingLine.text;
     let instructions = this.config.instructions;
     let hasMarker = false;
-    if (this.config.emotionMarkers) {
+    if (this.config.emotionMarkers || hummingLine.humming) {
       const extracted = extractEmotionMarkers(line);
       line = extracted.text;
       hasMarker = Boolean(extracted.instructions);
       if (hasMarker) instructions = extracted.instructions;
     }
     if (this.unsuitable(line)) return 'skipped';
-    if (this.config.polish && !checked) {
+    if (hummingLine.humming) {
+      instructions = HUMMING_INSTRUCTIONS;
+    } else if (this.config.polish && !checked) {
       const polished = await polishLine(line, instructions, this.config.polishPrompt, this.config.timeoutMs);
       if (polished !== null) {
         line = polished.text;
@@ -166,7 +170,7 @@ export class VoiceService {
 
     let files: string[] = [];
     try {
-      let wav = await this.synthesize(line, instructions, credentials);
+      let wav = await this.synthesize(line, instructions, credentials, hummingLine.humming);
       wav = processWav(wav, {
         fadeMs: this.config.fadeMs,
         padMs: this.config.padMs,

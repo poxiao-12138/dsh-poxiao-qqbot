@@ -17,6 +17,7 @@ export interface QQPromptEntry {
     readonly scope: QQScope;
     /** 人设 role-card markdown（可为空）。 */
     personaCard(): string;
+    voiceAvailable?(): boolean;
     /** 补充提示词（群/私分字段）。 */
     extraPrompts(): {
         group?: string;
