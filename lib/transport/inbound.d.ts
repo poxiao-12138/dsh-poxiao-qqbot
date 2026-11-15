@@ -6,5 +6,5 @@ import type { MiddlewareContext } from '@tencent-connect/qqbot-nodejs';
 /**
  * 处理 QQ 入站消息（已经过 SDK 中间件链）
  */
-export declare function handleInbound(ctx: MiddlewareContext, manager: SessionManager, config: ImQQBotConfig, logger: Logger, inputs: QqInputRegistry, batch?: readonly MiddlewareContext[]): Promise<void>;
+export declare function handleInbound(ctx: MiddlewareContext, manager: SessionManager, config: ImQQBotConfig, logger: Logger, inputs: QqInputRegistry, batch?: readonly MiddlewareContext[], observePrivate?: (peer: string, text: string) => void): Promise<void>;
 //# sourceMappingURL=inbound.d.ts.map

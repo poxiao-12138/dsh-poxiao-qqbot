@@ -9,9 +9,10 @@
  * appSecret 绝不出现在任何响应中。manual 提交走与扫码一致的
  * persist 路径（写入 profile patch → HMR 重载生效）。
  */
+import { createHash } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { existsSync, mkdirSync, readFileSync, renameSync, statSync, writeFileSync } from 'node:fs';
-import os from 'node:os';
+import { resolveAgentCwd } from '../shared/dirs.ts';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import type { Logger } from '../types.ts';
@@ -110,7 +111,7 @@ export interface BindRoutesOptions {
 
 /** 可经 UI 编辑的配置键（白名单：只收用户必要的字段，其余走 patch/env） */
 const EDITABLE_CONFIG_KEYS = new Set([
-  'requireMention', 'streaming', 'showToolResults', 'debug', 'wakeBatchSeconds', 'proactiveWakeEnabled',
+  'requireMention', 'streaming', 'showToolResults', 'debug', 'wakeBatchSeconds', 'proactiveWakeEnabled', 'personaEvolutionEnabled',
   'provider', 'model', 'preset',
   'groupPrompt', 'directPrompt',
   'voice',
@@ -122,6 +123,7 @@ const EDITABLE_CONFIG_KEYS = new Set([
 /** 白名单键的子 Schema（服务端校验：客户端校验仅为体验，安全边界在宿主） */
 const EDITABLE_CONFIG_SCHEMAS: Record<string, (value: unknown) => unknown> = {
   requireMention: (v) => booleanSchema(v, 'requireMention'),
+  personaEvolutionEnabled: (v) => booleanSchema(v, 'personaEvolutionEnabled'),
   proactiveWakeEnabled: (v) => booleanSchema(v, 'proactiveWakeEnabled'),
   wakeBatchSeconds: (v) => {
     if (typeof v !== 'number' || !Number.isInteger(v) || v < 0 || v > 30) throw new TypeError('合并窗口须为 0 到 30 秒的整数');
@@ -540,10 +542,14 @@ async function handleConfig(
 /** 工作区目录：优先 config.cwd，否则官方默认 ~/.dsh-qqbot/workspace */
 function workspaceDir(config: Record<string, unknown>): string {
   const cwd = config.cwd;
-  return typeof cwd === 'string' && cwd.trim() ? cwd : join(os.homedir(), '.dsh-qqbot', 'workspace');
+  return resolveAgentCwd(typeof cwd === 'string' ? cwd : undefined);
 }
 
 const PERSONA_MAX_BYTES = 512 * 1024;
+
+function personaRevision(content: string): string {
+  return createHash('sha256').update(content).digest('hex');
+}
 
 /** 人设：读写工作区 AGENTS.md（角色卡 + 行为规约） */
 async function handlePersona(
@@ -576,7 +582,7 @@ async function handlePersona(
       }
       content = DEFAULT_PERSONA;
     }
-    sendJson(res, 200, { path: file, content });
+    sendJson(res, 200, { path: file, content, revision: personaRevision(content) });
     return;
   }
   if (req.method !== 'POST') {
@@ -591,7 +597,8 @@ async function handlePersona(
     sendJson(res, 400, { ok: false, error: `invalid request body: ${err instanceof Error ? err.message : String(err)}` });
     return;
   }
-  const content = (body as { content?: unknown } | null)?.content;
+  const draft = body as { content?: unknown; revision?: unknown } | null;
+  const content = draft?.content;
   if (typeof content !== 'string') {
     sendJson(res, 400, { ok: false, error: 'content 必须是字符串' });
     return;
@@ -601,11 +608,18 @@ async function handlePersona(
     return;
   }
   try {
+    if (typeof draft?.revision === 'string') {
+      const current = existsSync(file) ? readFileSync(file, 'utf8') : DEFAULT_PERSONA;
+      if (draft.revision !== personaRevision(current)) {
+        sendJson(res, 409, { ok: false, error: '角色卡已更新。请先复制当前草稿，再重新打开设置查看新版。' });
+        return;
+      }
+    }
     mkdirSync(dirname(file), { recursive: true });
     const tmp = `${file}.tmp-${process.pid}-${Date.now()}`;
     writeFileSync(tmp, content, { mode: 0o600 });
     renameSync(tmp, file);
-    sendJson(res, 200, { ok: true, path: file, message: '角色卡已写入工作区' });
+    sendJson(res, 200, { ok: true, path: file, revision: personaRevision(content), message: '角色卡已写入工作区' });
   } catch (error) {
     sendJson(res, 500, { ok: false, error: `写入失败：${error instanceof Error ? error.message : String(error)}` });
   }

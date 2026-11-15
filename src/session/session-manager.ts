@@ -1,3 +1,4 @@
+import { evolutionPrompt } from '../persona/evolution.ts';
 import { installWorldTools, worldPrompt } from '../world/tools.ts';
 import { installQQPrompt, type QQPromptHandle } from '../prompt/install.ts';
 /**
@@ -137,13 +138,14 @@ export class SessionManager {
    * 在 agent.ctx 上安装 QQ prompt（幂等、fail-soft）：失败仅 warn，不打断会话建立。
    * TODO(split-2): personaCard / turnContext 由 inbound 接线，当前恒空。
    */
-  private attachPrompt(agent: DshAgent, scope: ChatScope): void {
+  private attachPrompt(agent: DshAgent, scope: ChatScope, peer: string): void {
     if (this.promptHandles.has(agent)) return;
     if (!agent.ctx.get?.('systemPrompt')) return;
     try {
       this.promptHandles.set(agent, installQQPrompt(agent.ctx, {
         scope,
         personaCard: () => '',
+        evolution: () => scope === 'c2c' && this.accountAccess?.isOwner(peer) ? evolutionPrompt(this.config) : '',
         voiceAvailable: () => Boolean(this.config.voice?.enabled && this.config.voice.mode !== 'text'
           && (scope === 'c2c' || this.config.voice.groupVoice)),
         extraPrompts: () => ({ group: this.config.groupPrompt, direct: (this.config.directPrompt ?? '') + (scope === 'c2c' ? worldPrompt() : '') }),
@@ -338,7 +340,7 @@ export class SessionManager {
     const oldHandle = record.handle;
     const oldAgent = record.agent;
     record.sessionId = childId;
-    this.attachPrompt(created.agent, record.scope);
+    this.attachPrompt(created.agent, record.scope, record.peerId);
     record.agent = created.agent;
     record.handle = created;
     record.agentPreset = composed.agentPreset;
@@ -593,7 +595,7 @@ export class SessionManager {
       agentPreset,
     };
 
-    this.attachPrompt(agent, scope);
+    this.attachPrompt(agent, scope, peerId);
     this.sessions.set(key, record);
 
     // 挂载到对应工作区（侧边栏可见性）；fail-soft、异步执行，不阻塞消息处理。

@@ -1,14 +1,3 @@
-/**
- * 端内绑定页路由 — /qqbot/im-qqbot/bind
- *
- * 注册在 dsh-host-webserver（ctx.webServer）的具名路由：
- * - Web 模式：页面同源直接访问
- * - Desktop：渲染进程的 fetch 经 IPC 桥自动附加 Host 认证转发
- *
- * 响应只含 task 级短时效数据（二维码 URL/SVG）与脱敏的 appId；
- * appSecret 绝不出现在任何响应中。manual 提交走与扫码一致的
- * persist 路径（写入 profile patch → HMR 重载生效）。
- */
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Logger } from '../types.ts';
 import type { BindingService } from './binding-service.ts';

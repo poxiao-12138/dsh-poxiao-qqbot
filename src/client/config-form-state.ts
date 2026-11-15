@@ -62,6 +62,7 @@ export interface ConfigWire {
   streaming?: boolean;
   wakeBatchSeconds?: number;
   proactiveWakeEnabled?: boolean;
+  personaEvolutionEnabled?: boolean;
   showToolResults?: boolean;
   debug?: boolean;
   provider?: string;
@@ -77,7 +78,7 @@ export interface ConfigWire {
 }
 
 const EDITABLE_KEYS = ['access', 'requireMention', 'streaming', 'showToolResults', 'debug',
-  'provider', 'model', 'preset', 'groupPrompt', 'directPrompt', 'wakeBatchSeconds', 'proactiveWakeEnabled', 'voice', 'memory', 'stickers'] as const;
+  'provider', 'model', 'preset', 'groupPrompt', 'directPrompt', 'wakeBatchSeconds', 'proactiveWakeEnabled', 'personaEvolutionEnabled', 'voice', 'memory', 'stickers'] as const;
 const ACCESS_KEYS = ['c2cMode', 'c2cAllow', 'groupMode', 'groupAllow', 'commandMode'] as const;
 
 export const DEFAULT_ACCESS: AccessControlWire = {
@@ -155,7 +156,7 @@ export function parseConfigDraft(value: unknown): ConfigDraft | undefined {
     for (const key of ['appId', 'accessRevision', 'provider', 'model', 'preset', 'groupPrompt', 'directPrompt']) {
       if (fields[key] !== undefined && typeof fields[key] !== 'string') return false;
     }
-    for (const key of ['requireMention', 'streaming', 'showToolResults', 'debug', 'proactiveWakeEnabled']) {
+    for (const key of ['requireMention', 'streaming', 'showToolResults', 'debug', 'proactiveWakeEnabled', 'personaEvolutionEnabled']) {
       if (fields[key] !== undefined && typeof fields[key] !== 'boolean') return false;
     }
     if (fields.wakeBatchSeconds !== undefined && (typeof fields.wakeBatchSeconds !== 'number' || !Number.isInteger(fields.wakeBatchSeconds) || fields.wakeBatchSeconds < 0 || fields.wakeBatchSeconds > 30)) return false;

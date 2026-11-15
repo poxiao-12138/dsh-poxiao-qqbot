@@ -1,4 +1,5 @@
 import { createUserMessage } from '@deepseek-ai/dsh-llm';
+import { PersonaEvolution } from '../persona/evolution.ts';
 import { logProactiveWake, ProactiveWake, proactiveProbability, PROACTIVE_WAKE_PROMPT, PROACTIVE_WAKE_SOURCE } from './proactive-wake.ts';
 import { DEFAULT_WAKE_BATCH_SECONDS } from '../shared/bind-protocol.ts';
 import type { DownloadedFile } from '../transport/attachment.ts';
@@ -85,6 +86,16 @@ export async function bootstrapGateway(
   // ── 入站：经过中间件链后的消息交给 dsh agent ──
   let connected = false;
   let stopping = false;
+  const evolution = new PersonaEvolution(config, logger, (peer) => {
+    const account = manager.accountAccess;
+    if (stopping || !account?.isOwner(peer)) return false;
+    const access = account.currentAccess();
+    return access.c2cMode === 'open' || (access.c2cMode === 'allowlist' && access.c2cAllow.includes(peer));
+  }, (peer) => {
+    const record = manager.getSessionRecord('c2c', peer);
+    return record ? record.agent.status === 'idle' : manager.hasSavedPrivateSession(peer);
+  });
+  const observePrivate = (peer: string, text: string) => evolution.add(peer, text);
   const mayWake = (peer: string): boolean => {
     if (config.proactiveWakeEnabled === false || stopping || !connected || !manager.accountAccess?.isOwner(peer)) return false;
     const access = manager.accountAccess.currentAccess();
@@ -125,7 +136,7 @@ export async function bootstrapGateway(
   const wakeSeconds = config.wakeBatchSeconds ?? DEFAULT_WAKE_BATCH_SECONDS;
   const wakeBatcher = new WakeBatcher<MiddlewareContext>(wakeSeconds * 1000, async (messages) => {
     try {
-      await handleInbound(messages[messages.length - 1]!, manager, config, logger, qqInputs, messages);
+      await handleInbound(messages[messages.length - 1]!, manager, config, logger, qqInputs, messages, observePrivate);
     } catch (error) {
       logger.error(`私聊合并投递失败: ${error instanceof Error ? error.message : String(error)}`);
     }
@@ -189,7 +200,7 @@ export async function bootstrapGateway(
       wakeBatcher.add(msg.senderId, mCtx);
       return;
     }
-    await handleInbound(mCtx, manager, config, logger, qqInputs);
+    await handleInbound(mCtx, manager, config, logger, qqInputs, undefined, observePrivate);
   });
 
   // ── 出站：dsh session/event → QQ 消息 ──
@@ -345,6 +356,7 @@ export async function bootstrapGateway(
         stopping = true;
         collectionLifetime.abort();
         proactiveWake.stop();
+        evolution.stop();
         wakeBatcher.stop();
         await manager.disposeAll();
         bot.stop();

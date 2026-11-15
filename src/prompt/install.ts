@@ -27,6 +27,7 @@ export interface QQPromptEntry {
   /** 人设 role-card markdown（可为空）。 */
   personaCard(): string;
   voiceAvailable?(): boolean;
+  evolution?(): string;
   /** 补充提示词（群/私分字段）。 */
   extraPrompts(): { group?: string; direct?: string };
   /** Read only the current turn's verified input; queued and previous turns return nothing. */
@@ -46,7 +47,7 @@ export function installQQPrompt(agentCtx: Context, entry: QQPromptEntry): QQProm
   const disposers: Array<() => void> = [];
   disposers.push(service.section({
     name: RULES_SECTION_NAME, order: RULES_ORDER,
-    text: () => entry.voiceAvailable?.() ? RULES_TEXT + '\n' + HUMMING_PROMPT : RULES_TEXT,
+    text: () => [RULES_TEXT, entry.voiceAvailable?.() ? HUMMING_PROMPT : '', entry.evolution?.()].filter(Boolean).join('\n'),
   }));
   disposers.push(service.section({ name: PERSONA_SECTION_NAME, order: PERSONA_ORDER, text: () => selectPersonaText(entry.personaCard(), entry.scope) }));
   disposers.push(service.section({ name: EXTRA_SECTION_NAME, order: EXTRA_ORDER, text: () => selectExtraPrompt(entry.extraPrompts(), entry.scope) }));

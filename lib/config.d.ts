@@ -172,6 +172,7 @@ export interface ImQQBotConfig {
     historyLimit: number;
     wakeBatchSeconds?: number;
     proactiveWakeEnabled?: boolean;
+    personaEvolutionEnabled?: boolean;
     /** 访问控制 */
     access: AccessControlConfig;
     /** 是否展示工具调用成功结果（工具错误始终展示） */

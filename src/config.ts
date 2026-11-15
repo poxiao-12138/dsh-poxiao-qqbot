@@ -187,6 +187,7 @@ export interface ImQQBotConfig {
   historyLimit: number;
   wakeBatchSeconds?: number;
   proactiveWakeEnabled?: boolean;
+  personaEvolutionEnabled?: boolean;
   /** 访问控制 */
   access: AccessControlConfig;
   /** 是否展示工具调用成功结果（工具错误始终展示） */
@@ -331,6 +332,7 @@ export const ConfigSchema: Schema<ImQQBotConfig> = Schema.object({
   processingTimeoutMs: Schema.number().default(30 * 60 * 1000).description('处理超时(ms)，超时中断当前 LLM 调用'),
   askTimeoutMs: Schema.number().default(5 * 60 * 1000).description('待答问题超时(ms)，超时自动拒绝并提示'),
   proactiveWakeEnabled: Schema.boolean().default(true),
+  personaEvolutionEnabled: Schema.boolean().default(true),
   wakeBatchSeconds: Schema.number().min(0).max(30).default(DEFAULT_WAKE_BATCH_SECONDS),
   historyLimit: Schema.number().default(10).description('群历史缓冲条数'),
   access: AccessControlSchema.default({

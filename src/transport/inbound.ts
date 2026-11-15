@@ -93,6 +93,7 @@ export async function handleInbound(
   logger: Logger,
   inputs: QqInputRegistry,
   batch: readonly MiddlewareContext[] = [ctx],
+  observePrivate?: (peer: string, text: string) => void,
 ): Promise<void> {
   const msg = ctx.message as unknown as ProcessedMessage;
   const { bot } = ctx;
@@ -142,6 +143,9 @@ export async function handleInbound(
   //（不在 source 上写非契约字段，也不在 SessionRecord 上抢标记）。
   inputs.register(String(message.id));
   record.agent.followup(message);
+  if (scope === 'c2c' && observePrivate) {
+    for (const entry of batch) observePrivate(peerId, entry.message.content);
+  }
   logger.info(`→ followup sent: key=${scope}:${peerId}`);
 
   // 群消息回复后清空历史缓存（避免下次 @ 时重复组包）

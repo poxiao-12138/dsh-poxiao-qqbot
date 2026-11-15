@@ -698,6 +698,8 @@ export function ConfigPanel({ bindPhase }: ConfigPanelProps = {}): ReactNode {
         createElement('div', { hidden: tab !== 'persona' }, createElement(PersonaEditor, {
           directPrompt: form.directPrompt ?? '',
           onDirectPrompt: (value: string) => patch('directPrompt', value),
+          evolutionEnabled: form.personaEvolutionEnabled ?? true,
+          onEvolutionEnabled: (value: boolean) => patch('personaEvolutionEnabled', value),
           disabled: busy,
         })),
       ] : []),
@@ -909,7 +911,8 @@ const DAUGHTER_WIZARD_IDENTITY = {
   relation: '父女关系。你把对方当爸爸，可以撒娇和顶嘴，尊重彼此的边界，不谈恋爱。',
 };
 
-function PersonaEditor({ directPrompt, onDirectPrompt, disabled }: {
+function PersonaEditor({ directPrompt, onDirectPrompt, evolutionEnabled, onEvolutionEnabled, disabled }: {
+  evolutionEnabled: boolean; onEvolutionEnabled: (value: boolean) => void;
   directPrompt: string; onDirectPrompt: (value: string) => void;
   disabled: boolean;
 }): ReactNode {
@@ -929,14 +932,16 @@ function PersonaEditor({ directPrompt, onDirectPrompt, disabled }: {
   });
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [content, setContent] = useState<string | null>(null);
+  const revision = useRef<string | undefined>();
   const [path, setPath] = useState('');
   const [dirty, setDirty] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    void fetchJson<{ path: string; content: string }>(PERSONA_PATH, { cache: 'no-store' })
+    void fetchJson<{ path: string; content: string; revision?: string }>(PERSONA_PATH, { cache: 'no-store' })
       .then((result) => {
+        revision.current = result.revision;
         setContent(result.content);
         setPath(result.path);
         setDirty(false);
@@ -954,12 +959,16 @@ function PersonaEditor({ directPrompt, onDirectPrompt, disabled }: {
     setSaving(true);
     setStatus(null);
     try {
-      const result = await fetchJson<{ ok: boolean; message?: string; error?: string }>(PERSONA_PATH, {
+      const result = await fetchJson<{ ok: boolean; message?: string; error?: string; revision?: string }>(PERSONA_PATH, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ content }),
+        body: JSON.stringify({ content, revision: revision.current }),
       });
-      if (result.ok) { setDirty(false); setStatus(result.message ?? '已保存'); }
+      if (result.ok) {
+        revision.current = result.revision;
+        setDirty(false);
+        setStatus(result.message ?? '已保存');
+      }
       else setStatus(result.error ?? '保存失败');
     } catch (error) {
       setStatus(`保存失败：${error instanceof Error ? error.message : String(error)}`);
@@ -989,6 +998,11 @@ function PersonaEditor({ directPrompt, onDirectPrompt, disabled }: {
 
   return [
     createElement('div', { className: 'imqb2-group-title', key: 'persona-title' }, '角色卡（性格与行为，主要人设）'),
+    createElement('div', { className: 'imqb2-field', key: 'persona-evolution' },
+      createElement('div', { className: 'imqb2-head' },
+        createElement('span', { className: 'imqb2-label' }, '自我进化'),
+        createElement(Switch, { label: '自我进化', checked: evolutionEnabled, onChange: onEvolutionEnabled, disabled })),
+      createElement('p', { className: 'imqb2-note' }, '从已认领主人的私聊学习。按记忆整理的时间检查，主人明确提出长期调整时优先处理。可参考已核验的 Obsidian 笔记，每次修改角色卡「聊天风格微调」中的一条规则。关闭后停止自动修改。')),
     createElement('div', { className: 'imqb2-field', key: 'persona-template' },
       createElement('div', { className: 'imqb2-head' },
         createElement('select', { id: 'imqq-persona-template', className: 'imqb2-textarea', value: templateId,

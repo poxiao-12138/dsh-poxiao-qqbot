@@ -18,6 +18,7 @@ export interface QQPromptEntry {
     /** 人设 role-card markdown（可为空）。 */
     personaCard(): string;
     voiceAvailable?(): boolean;
+    evolution?(): string;
     /** 补充提示词（群/私分字段）。 */
     extraPrompts(): {
         group?: string;
