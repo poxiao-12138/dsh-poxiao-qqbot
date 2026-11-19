@@ -1,6 +1,6 @@
 import { createUserMessage } from '@deepseek-ai/dsh-llm';
 import { PersonaEvolution } from '../persona/evolution.ts';
-import { logProactiveWake, ProactiveWake, proactiveProbability, PROACTIVE_WAKE_PROMPT, PROACTIVE_WAKE_SOURCE } from './proactive-wake.ts';
+import { logProactiveWake, ProactiveWake, PROACTIVE_WAKE_PROMPT, PROACTIVE_WAKE_SOURCE } from './proactive-wake.ts';
 import { DEFAULT_WAKE_BATCH_SECONDS } from '../shared/bind-protocol.ts';
 import type { DownloadedFile } from '../transport/attachment.ts';
 import { WakeBatcher } from '../transport/wake-batcher.ts';
@@ -96,25 +96,26 @@ export async function bootstrapGateway(
     return record ? record.agent.status === 'idle' : manager.hasSavedPrivateSession(peer);
   });
   const observePrivate = (peer: string, text: string) => evolution.add(peer, text);
-  const mayWake = (peer: string): boolean => {
-    if (config.proactiveWakeEnabled === false || stopping || !connected || !manager.accountAccess?.isOwner(peer)) return false;
-    const access = manager.accountAccess.currentAccess();
-    return access.c2cMode === 'open' || (access.c2cMode === 'allowlist' && access.c2cAllow.includes(peer));
+  const wakeBlockReason = (peer: string): string | undefined => {
+    if (config.proactiveWakeEnabled === false) return '主动联系已关闭';
+    if (stopping) return '插件正在停止';
+    if (!connected) return 'QQ 网关未连接';
+    const account = manager.accountAccess;
+    if (!account?.isOwner(peer)) return '未绑定为主人';
+    const access = account.currentAccess();
+    if (access.c2cMode !== 'open' && !(access.c2cMode === 'allowlist' && access.c2cAllow.includes(peer))) {
+      return '主人未获私聊权限';
+    }
   };
+  const mayWake = (peer: string): boolean => wakeBlockReason(peer) === undefined;
 
   const proactiveWake = new ProactiveWake(async (peer, lastIncoming) => {
     try {
-      if (!mayWake(peer)) { logProactiveWake('跳过：离线、已关闭或不具备主人私聊权限'); return; }
-      const now = Date.now();
-      const replies = recentReplies.get(peer) ?? [];
-      const probability = proactiveProbability(now - lastIncoming, new Date(now).getHours(),
-        replies.filter((time) => now - time < 60 * 60_000).length,
-        replies.some((time) => now - time < 30 * 60_000));
-      if (!probability) { logProactiveWake('跳过：闲置不足 15 分钟'); return; }
+      const blocked = wakeBlockReason(peer);
+      if (blocked) { logProactiveWake('跳过：' + blocked); return; }
       if (manager.getSessionRecord('c2c', peer)?.agent.status === 'running') {
         logProactiveWake('跳过：会话正在处理消息'); return;
       }
-      if (Math.random() >= probability) { logProactiveWake(`跳过：随机未抽中 probability=${probability}`); return; }
       if (!manager.hasSavedPrivateSession(peer)) { logProactiveWake('跳过：没有已保存的私聊会话'); return; }
       const record = manager.getSessionRecord('c2c', peer)
         ?? await manager.getOrCreate('c2c', peer, peer, { scope: 'c2c', targetId: peer });
@@ -122,7 +123,7 @@ export async function bootstrapGateway(
         logProactiveWake('跳过：恢复会话期间状态变化'); return;
       }
       record.agent.followup(createUserMessage({
-        source: { kind: 'plugin', plugin: PROACTIVE_WAKE_SOURCE, form: 'notice', summary: '私聊主动联系机会' },
+        source: { kind: PROACTIVE_WAKE_SOURCE, form: 'notice', summary: '私聊主动联系机会' },
         content: [{ type: 'text', text: PROACTIVE_WAKE_PROMPT }],
       }));
       logProactiveWake('已提交私聊唤醒');
@@ -132,7 +133,6 @@ export async function bootstrapGateway(
       logger.warn(`im-qqbot: 主动联系检查失败: ${error instanceof Error ? error.message : String(error)}`);
     }
   }, Math.random, logProactiveWake);
-  const recentReplies = new Map<string, number[]>();
   const wakeSeconds = config.wakeBatchSeconds ?? DEFAULT_WAKE_BATCH_SECONDS;
   const wakeBatcher = new WakeBatcher<MiddlewareContext>(wakeSeconds * 1000, async (messages) => {
     try {
@@ -248,14 +248,6 @@ export async function bootstrapGateway(
   (ctx as unknown as { on(event: string, handler: (...args: unknown[]) => void, options?: { global?: boolean }): void })
     .on('session/event', (...args) => {
       const [session, event] = args as Parameters<typeof outbound.routeSessionEvent>;
-      if (event.type === 'assistant/message' && !turnTracker.planFor(session.header.id)?.idleWake) {
-        const target = manager.deliveryAddress(session.header.id);
-        if (target?.scope === 'c2c' && mayWake(target.targetId)) {
-          const now = Date.now();
-          const recent = recentReplies.get(target.targetId) ?? [];
-          recentReplies.set(target.targetId, [...recent.filter((time) => now - time < 60 * 60_000), now]);
-        }
-      }
       outbound.routeSessionEvent(session, event);
     }, { global: true });
 
@@ -301,6 +293,7 @@ export async function bootstrapGateway(
   try {
     bot.on('disconnected', (event: GatewayDisconnect) => {
       connected = false;
+      logProactiveWake(event.willReconnect ? 'QQ 网关断开，等待重连' : 'QQ 网关断开，已停止重连');
       const detail = `code=${event.code}${event.reason ? ` reason=${event.reason}` : ''}`;
       if (event.willReconnect) {
         logger.warn(`Bot disconnected (${detail}), reconnecting...`);
@@ -312,23 +305,25 @@ export async function bootstrapGateway(
     logger.warn(`qqbot-nodejs SDK 不支持 disconnected 事件（请升级 @tencent-connect/qqbot-nodejs 至 1.0.5+）: ${err instanceof Error ? err.message : String(err)}`);
   }
 
-  bot.on('ready', () => {
+  const markConnected = (event: 'ready' | 'resumed') => {
     connected = true;
     if (config.proactiveWakeEnabled !== false) {
       const owners = manager.accountAccess?.pairStatus().owners ?? [];
       let scheduled = 0;
       for (const { openid } of owners) {
         if (mayWake(openid) && manager.hasSavedPrivateSession(openid)) {
-          proactiveWake.watch(openid);
+          proactiveWake.watch(openid, false);
           scheduled++;
         }
       }
-      logProactiveWake(`机器人在线，符合检查条件的私聊数=${scheduled}`);
+      logProactiveWake(`机器人在线，符合检查条件的私聊数=${scheduled} event=${event}`);
     } else {
       logProactiveWake('机器人在线，主动联系已关闭');
     }
-    console.log(`[im-qqbot] Bot ready! appId=${config.appId}`);
-  });
+    logger.info(`im-qqbot: QQ 网关已连接 event=${event}`);
+  };
+  bot.on('ready', () => markConnected('ready'));
+  bot.on('resumed', () => markConnected('resumed'));
 
   // ── 富媒体过期清理 ──
   if (config.media.enabled) {

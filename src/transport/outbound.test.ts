@@ -595,18 +595,19 @@ it('游戏回执后的流式草稿不会抢先发送，最终只发送回执确�
 });
 
 it.each([
-  ['[[静默]]', undefined, false],
-  ['我没有想说的话。', undefined, false],
+  ['[[静默]]', '来跟你打个招呼。', false],
+  ['你今天忙得怎么样？', '你今天忙得怎么样？', false],
+  ['', undefined, false],
   ['[[主动联系]]\n我刚想起你说的那个梗。', '我刚想起你说的那个梗。', false],
   ['[[主动联系]]\n我刚想起你说的那个梗。', '我刚想起你说的那个梗。', true],
-])('主动唤醒只投递明确选择发送的内容 (%s)', async (reply, expected, fail) => {
+])('主动唤醒直接投递文字 (%s)', async (reply, expected, fail) => {
   const { outbound, bot } = setup();
   if (fail) vi.mocked(bot.sendMarkdown).mockRejectedValueOnce(new Error('QQ rejected'));
   const session = { header: { id: 'sess-qq' } };
   outbound.routeSessionEvent(session, { type: 'turn/start', data: { turn: 1 } });
   outbound.routeSessionEvent(session, {
     type: 'user/message',
-    data: { source: { kind: 'plugin', plugin: 'im-qqbot.proactive-wake', form: 'notice' } },
+    data: { source: { kind: 'im-qqbot.proactive-wake', form: 'notice', summary: '私聊主动联系机会' } },
   });
   outbound.routeSessionEvent(session, {
     type: 'assistant/chunk', data: { text: reply },

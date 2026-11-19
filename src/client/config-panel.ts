@@ -449,7 +449,7 @@ export function ConfigPanel({ bindPhase }: ConfigPanelProps = {}): ReactNode {
             createElement('span', { className: 'imqb2-label' }, '主动来找我'),
             createElement(Switch, { label: '主动来找我', checked: form.proactiveWakeEnabled ?? true,
               onChange: (value: boolean) => patch('proactiveWakeEnabled', value) })),
-          createElement('p', { className: 'imqb2-hint' }, '仅针对已认领的主人私聊。安静至少 15 分钟后，每隔 30～90 分钟随机检查，基础唤醒概率 30%。有合适的话才发消息。')),
+          createElement('p', { className: 'imqb2-hint' }, '仅联系已认领的主人。每隔 2～4 小时主动发一条私聊；本机时间凌晨 0 点至早上 8 点暂停。')),
         createElement('div', { className: 'imqb2-group-title' }, '语音'),
         createElement('div', { className: 'imqb2-field' },
           createElement('div', { className: 'imqb2-head' },
@@ -549,7 +549,7 @@ export function ConfigPanel({ bindPhase }: ConfigPanelProps = {}): ReactNode {
                   createElement('option', { value: 'wav', key: 'wav' }, 'wav（默认）'),
                   createElement('option', { value: 'mp3', key: 'mp3' }, 'mp3（需 ffmpeg）'))),
             ),
-            createElement(VoiceCredentialsForm, { disabled: busy, voiceOverride: baseline.voice?.voiceId }),
+            createElement(VoiceCredentialsForm, { disabled: busy }),
             ] : [
               createElement('p', { className: 'imqb2-hint' }, '语音模式已关闭：只发文字；改成其他模式才会显示音色与高级参数。'),
             ]),
@@ -719,11 +719,7 @@ export function ConfigPanel({ bindPhase }: ConfigPanelProps = {}): ReactNode {
 
 
 /** Breeze 凭证表单：读写 QQ_VOICE_POLISH_BREEZE，与 qq-voice-polish 插件共用同一份凭证 */
-function VoiceCredentialsForm({ disabled, voiceOverride }: { disabled: boolean; voiceOverride?: string }): ReactNode {
-  const defaultVoiceId = VOICE_PRESET_OPTIONS[0].id;
-  const [savedVoiceId, setSavedVoiceId] = useState('');
-  const [voiceLoaded, setVoiceLoaded] = useState(false);
-  const currentVoiceId = voiceOverride || savedVoiceId;
+function VoiceCredentialsForm({ disabled }: { disabled: boolean }): ReactNode {
   const [configured, setConfigured] = useState<boolean | null>(null);
   const [apiKey, setApiKey] = useState('');
   const [choice, setChoice] = useState(VOICE_PRESET_OPTIONS[0]?.id ?? '');
@@ -744,10 +740,8 @@ function VoiceCredentialsForm({ disabled, voiceOverride }: { disabled: boolean; 
     }
     void fetchJson<{ configured?: boolean; voiceId?: string }>(VOICE_CREDENTIAL_PATH, { cache: 'no-store' })
       .then((saved) => {
-        setVoiceLoaded(true);
         if (saved.configured === true && typeof saved.voiceId === 'string' && saved.voiceId) {
           setConfigured(true);
-          setSavedVoiceId(saved.voiceId);
           if (VOICE_PRESET_OPTIONS.some((item) => item.id === saved.voiceId)) {
             setChoice(saved.voiceId);
           } else {
@@ -760,7 +754,7 @@ function VoiceCredentialsForm({ disabled, voiceOverride }: { disabled: boolean; 
     return () => { previewRef.current?.abort(); stopAudio(); };
   }, []);
 
-  const voiceId = (choice === 'custom' ? customVoice : choice === defaultVoiceId ? currentVoiceId || choice : choice).trim();
+  const voiceId = (choice === 'custom' ? customVoice : choice).trim();
   const currentName = choice === 'custom'
     ? (customVoice.trim() || '自定义音色')
     : (VOICE_PRESET_OPTIONS.find((item) => item.id === choice)?.name ?? choice);
@@ -846,7 +840,6 @@ function VoiceCredentialsForm({ disabled, voiceOverride }: { disabled: boolean; 
         if (result?.ok === false) throw new Error('save failed');
       }
       setApiKey('');
-      setSavedVoiceId(voiceId);
       setConfigured(true);
       setEditing(false);
       setStatus(`已保存：${currentName}`);
@@ -888,9 +881,7 @@ function VoiceCredentialsForm({ disabled, voiceOverride }: { disabled: boolean; 
     createElement('div', { className: 'imqb2-head' },
       createElement('span', { className: 'imqb2-label' }, '音色'),
       createElement('a', { href: 'https://breezeblue.ai/zh/app', target: '_blank', rel: 'noopener noreferrer', className: 'imqb2-hint' }, '打开我的音色 ↗')),
-    ...VOICE_PRESET_OPTIONS.map((option) => option.id === defaultVoiceId
-      ? voiceRow(option.id, option.name, currentVoiceId || (voiceLoaded ? option.id : ''))
-      : voiceRow(option.id, option.name)),
+    ...VOICE_PRESET_OPTIONS.map((option) => voiceRow(option.id, option.name)),
     voiceRow('custom', '用自己的音色 ID', customVoice.trim()),
     choice === 'custom'
       ? createElement(Input, { id: 'imqq-breeze-voice-custom', placeholder: '粘贴 Voice ID，例如 voc_xxx',
@@ -1150,7 +1141,7 @@ const DEFAULT_MEMORY: NonNullable<ConfigWire['memory']> = {
 };
 
 const VOICE_PRESET_OPTIONS: ReadonlyArray<{ id: string; name: string }> = [
-  { id: 'voc_6t8vrjmcq4cy', name: '大肥鱼' },
+  { id: 'voc_d7fhsuhdaptx', name: '大肥鱼（破晓版）' },
   { id: 'voc_u3nxkd5578wc', name: '大肥鱼（机灵版）' },
   { id: 'voc_8yud7hz7c9q2', name: '大肥鱼（迷糊版）' },
   { id: 'voc_88a7brnfb4tb', name: '御姐' },

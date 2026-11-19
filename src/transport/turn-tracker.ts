@@ -96,7 +96,7 @@ export class TurnTracker implements DeliveryTargetResolver {
     const tracked = this.turns.get(sessionId);
     if (tracked === undefined) return;
     const { messageId, source } = readUserMessage(data);
-    if (source?.kind === 'plugin' && source.plugin === PROACTIVE_WAKE_SOURCE) tracked.idleWake = true;
+    if (source?.kind === PROACTIVE_WAKE_SOURCE) tracked.idleWake = true;
     const qqOwned = this.inputs.has(messageId);
     if (qqOwned && messageId !== undefined) tracked.inputs.add(messageId);
 

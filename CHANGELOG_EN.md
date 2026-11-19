@@ -6,6 +6,18 @@ This file records significant dsh-qqbot updates from a product perspective, focu
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.2.29] - 2026-11-18
+
+- The first voice preset is now the shared Dafeiyu (Poxiao Edition) voice, with a preview from the supplied video.
+
+## [0.2.28] - 2026-11-18
+
+- The bot contacts its owner every 2–4 hours, with quiet hours from midnight to 08:00. Random skips and the silence decision are temporarily disabled.
+
+## [0.2.27] - 2026-11-16
+
+- Fix the source metadata for proactive wake messages so DSH accepts them. Resume checks when the QQ gateway reconnects and suppress delivery when the character chooses silence.
+
 ## [Unreleased]
 
 ### New Features

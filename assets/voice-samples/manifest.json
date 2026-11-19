@@ -1,6 +1,14 @@
 {
   "samples": [
     {
+      "voiceId": "voc_d7fhsuhdaptx",
+      "name": "大肥鱼（破晓版）",
+      "identity": "女儿",
+      "source": "用户提供的视频原声",
+      "file": "voc_d7fhsuhdaptx.mp3",
+      "size": 199371
+    },
+    {
       "voiceId": "voc_6t8vrjmcq4cy",
       "name": "大肥鱼",
       "identity": "女儿",
