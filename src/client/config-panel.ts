@@ -16,12 +16,13 @@ import { createElement, useCallback, useEffect, useRef, useState, type FormEvent
 import { Button, Input, Switch, SegmentedControl } from '@deepseek-ai/dsh-client-ui-primitives';
 import { DEFAULT_WAKE_BATCH_SECONDS, BIND_CONFIG_PATH, PERSONA_PATH, VOICE_CREDENTIAL_PATH, VOICE_PREVIEW_PATH, VOICE_SAMPLE_PATH } from '../shared/bind-protocol.ts';
 import { getCredentialsApi, getDirectoryPickerApi, VOICE_CREDENTIAL_REF } from './runtime-services.ts';
-import { DEFAULT_PERSONA, PERSONA_TEMPLATES, VOICE_RULES, WIZARD_RULE_BLOCKS } from '../persona/templates.ts';
+import { DEFAULT_PERSONA, PERSONA_TEMPLATES, WIZARD_RULE_BLOCKS } from '../persona/templates.ts';
 
 import { fetchJson, HttpError } from './http.ts';
 import { configDraft, configPatch, DEFAULT_ACCESS, isConfigDirty, normalizeConfig, parseConfigDraft, rebaseConfig, type AccessControlWire, type ConfigDraft, type ConfigWire } from './config-form-state.ts';
 import { SlashCommandList } from './slash-command-list.ts';
 import { COMMANDS_PATH, type SlashCommandDescriptor } from '../shared/command-protocol.ts';
+import { PAIR_STATUS_PATH, type PairStatusWire } from '../shared/pairing-protocol.ts';
 import { PairClaimPanel } from './qq-pairing.ts';
 
 /** 样式注入标记（幂等） */
@@ -45,23 +46,89 @@ function useConfigPanelStyles(): void {
     style.id = STYLE_ID;
     style.textContent = `
 .imqb2-form { display: flex; flex-direction: column; width: 100%; min-width: 0; color: var(--dsw-alias-label-primary); }
-.imqb2-fields { border: 0; padding: 0; margin: 0; min-width: 0; }
+.imqb2-fields { border: 0; padding: 0; margin: 0; min-width: 0; display: flex; flex-direction: column; gap: 12px; }
 .imqb2-group-title {
-  padding: 14px 0 2px; font-size: 12px; font-weight: 600; line-height: 18px;
-  color: var(--dsw-alias-label-secondary);
+  padding: 4px 2px 2px; font-size: 12px; font-weight: 600; line-height: 18px;
+  letter-spacing: 0.02em; color: var(--dsw-alias-label-secondary);
 }
+.imqb2-card {
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: var(--dsw-radius-lg, 10px);
+  background: var(--dsw-alias-bg-layer-2);
+  padding: 4px 16px;
+}
+.imqb2-card-title {
+  margin: 0; padding: 12px 0 4px; font-size: 13px; font-weight: 600; line-height: 20px;
+  color: var(--dsw-alias-label-primary);
+}
+.imqb2-grid-2 { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.imqb2-compact-input { width: 96px; flex: none; }
 .imqb2-field { display: flex; flex-direction: column; gap: 6px; padding: 12px 0; }
 .imqb2-field + .imqb2-field { border-top: 0.5px solid var(--dsw-alias-border-l2); }
-.imqb2-world-row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--dsw-alias-border-l2); border-radius: var(--dsw-radius-md); }
-.imqb2-head { display: flex; align-items: center; gap: 8px; min-height: 28px; }
+.imqb2-world-row { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border: 1px solid var(--dsw-alias-border-l2); border-radius: var(--dsw-radius-lg, 10px); background: var(--dsw-alias-bg-layer-2); }
+.imqb2-head { display: flex; align-items: center; gap: 10px; min-height: 28px; }
 .imqb2-label {
   flex: 1; min-width: 0; font-size: 13px; font-weight: 500; line-height: 1.5;
   color: var(--dsw-alias-label-primary);
 }
 .imqb2-help { margin: 0; font-size: 12px; line-height: 1.6; color: var(--dsw-alias-label-secondary); }
 .imqb2-hint { margin: 0; font-size: 12px; line-height: 1.5; color: var(--dsw-alias-label-tertiary); }
-.imqb2-textarea { box-sizing: border-box; width: 100%; min-height: 68px; padding: 8px 12px; resize: vertical; border: 1px solid var(--dsw-alias-border-l2); border-radius: var(--dsw-radius-md); background: var(--dsw-alias-bg-layer-3); font: inherit; color: var(--dsw-alias-label-primary); line-height: 1.5; }
+.imqb2-status-pill {
+  margin: 2px 0 0; padding: 8px 10px; border-radius: var(--dsw-radius-md, 6px);
+  background: var(--dsw-alias-bg-layer-3); font-size: 12px; line-height: 1.5;
+  color: var(--dsw-alias-label-secondary);
+}
+.imqb2-select {
+  box-sizing: border-box; width: 100%; height: 34px; padding: 0 10px;
+  border: 1px solid var(--dsw-alias-border-l2); border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-bg-layer-3); font: inherit; font-size: 13px;
+  color: var(--dsw-alias-label-primary); cursor: pointer;
+}
+.imqb2-select:focus-visible { outline: 2px solid var(--dsw-alias-label-secondary); outline-offset: 2px; }
+.imqb2-textarea { box-sizing: border-box; width: 100%; min-height: 68px; padding: 8px 12px; resize: vertical; border: 1px solid var(--dsw-alias-border-l2); border-radius: var(--dsw-radius-md); background: var(--dsw-alias-bg-layer-3); font: inherit; font-size: 13px; color: var(--dsw-alias-label-primary); line-height: 1.5; }
 .imqb2-textarea:focus-visible { outline: 2px solid var(--dsw-alias-label-secondary); outline-offset: 2px; }
+.imqb2-voice-list { display: flex; flex-direction: column; gap: 6px; }
+.imqb2-voice-item {
+  display: flex; align-items: center; gap: 10px; padding: 8px 10px;
+  border: 1px solid var(--dsw-alias-border-l2); border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-bg-layer-1); cursor: pointer; transition: border-color .15s, background .15s;
+}
+.imqb2-voice-item:hover { background: var(--dsw-alias-bg-layer-3); }
+.imqb2-voice-item--active {
+  border-color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-bg-layer-3);
+}
+.imqb2-voice-radio { position: absolute; opacity: 0; width: 0; height: 0; pointer-events: none; }
+.imqb2-voice-dot {
+  width: 14px; height: 14px; border-radius: 999px; flex: none;
+  border: 1.5px solid var(--dsw-alias-label-tertiary); box-sizing: border-box;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.imqb2-voice-item--active .imqb2-voice-dot {
+  border-color: var(--dsw-alias-label-primary);
+}
+.imqb2-voice-item--active .imqb2-voice-dot::after {
+  content: ''; width: 6px; height: 6px; border-radius: 999px;
+  background: var(--dsw-alias-label-primary);
+}
+.imqb2-template-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.imqb2-template-card {
+  display: flex; flex-direction: column; gap: 3px; text-align: left; padding: 10px 12px;
+  border: 1px solid var(--dsw-alias-border-l2); border-radius: var(--dsw-radius-md);
+  background: var(--dsw-alias-bg-layer-1); color: inherit; font: inherit; cursor: pointer;
+  transition: border-color .15s, background .15s;
+}
+.imqb2-template-card:hover { background: var(--dsw-alias-bg-layer-3); }
+.imqb2-template-card--active {
+  border-color: var(--dsw-alias-label-primary);
+  background: var(--dsw-alias-bg-layer-3);
+}
+.imqb2-template-card:disabled { opacity: 0.55; cursor: not-allowed; }
+.imqb2-template-name { font-size: 13px; font-weight: 600; color: var(--dsw-alias-label-primary); }
+.imqb2-template-desc { font-size: 12px; line-height: 1.45; color: var(--dsw-alias-label-tertiary); }
+@media (max-width: 520px) {
+  .imqb2-grid-2, .imqb2-template-grid { grid-template-columns: minmax(0, 1fr); }
+}
 /* Preserve the QQ settings draft and readback feedback in the sticky footer. */
 .imqb2-footer {
   position: sticky; bottom: 0; z-index: 1; display: flex; align-items: center;
@@ -80,8 +147,12 @@ function useConfigPanelStyles(): void {
 .imqb2-form .imqc-cmdGroup > strong { font-size: 12px; font-weight: 500; color: var(--dsw-alias-label-secondary); }
 .imqb2-form .imqc-cmdRow { display: flex; align-items: baseline; flex-wrap: wrap; gap: 4px 8px; margin-top: 8px; overflow-wrap: anywhere; }
 .imqb2-form .imqc-cmdRow code { padding: 1px 6px; border-radius: var(--dsw-radius-sm); background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); font-size: 12px; }
-.imqb2-details { margin-top: 12px; border-top: 0.5px solid var(--dsw-alias-border-l2); }
-.imqb2-summary { padding: 16px 0; font-size: 13px; font-weight: 500; cursor: pointer; }
+.imqb2-details {
+  border: 1px solid var(--dsw-alias-border-l2); border-radius: var(--dsw-radius-lg, 10px);
+  background: var(--dsw-alias-bg-layer-2); padding: 0 16px;
+}
+.imqb2-details[open] { padding-bottom: 12px; }
+.imqb2-summary { padding: 13px 0; font-size: 13px; font-weight: 500; cursor: pointer; }
 .imqb2-summary::marker { color: var(--dsw-alias-label-tertiary); }
 .imqb2-summary:focus-visible { outline: var(--dsw-focus-ring-width, 2px) solid var(--dsw-focus-ring-color); outline-offset: 2px; border-radius: var(--dsw-radius-sm); }
 .imqb2-directory-feedback { display: flex; align-items: flex-start; gap: 8px; }
@@ -246,6 +317,15 @@ export function ConfigPanel({ bindPhase }: ConfigPanelProps = {}): ReactNode {
   const [tab, setTab] = useState<TabId>('official');
   const [personaVisited, setPersonaVisited] = useState(false);
   const [editingCustomScope, setEditingCustomScope] = useState(false);
+  const [pairStatus, setPairStatus] = useState<PairStatusWire | null>(null);
+  useEffect(() => {
+    if (bindPhase !== 'bound') return;
+    const controller = new AbortController();
+    void fetchJson<PairStatusWire>(PAIR_STATUS_PATH, { cache: 'no-store', signal: controller.signal })
+      .then((status) => { if (!controller.signal.aborted) setPairStatus(status); })
+      .catch(() => {});
+    return () => controller.abort();
+  }, [bindPhase, reload]);
 
   const replaceDraft = useCallback((next: ConfigDraft): void => {
     draftRef.current = next;
@@ -378,303 +458,358 @@ export function ConfigPanel({ bindPhase }: ConfigPanelProps = {}): ReactNode {
           },
         })),
       ...(tab === 'official' ? [
-        createElement('div', { className: 'imqb2-group-title' }, '服务范围'),
-        createElement(SegmentedRow, { disabled: busy,
-          label: '私聊', value: access.c2cMode, options: MODE_OPTIONS,
-          onChange: (value) => { patch('access', { ...access, c2cMode: value }); },
-        }),
-        access.c2cMode === 'allowlist' ? createElement(PairClaimPanel, { purpose: 'allow-c2c', title: '私聊白名单', enabled: bindPhase === 'bound', onChange: retry, hint: '生成配对码，让对方在私聊里直接给机器人发送这个码，即加入私聊白名单。' }) : null,
-        createElement(SegmentedRow, { disabled: busy,
-          label: '群聊', value: access.groupMode, options: MODE_OPTIONS,
-          onChange: (value) => { patch('access', { ...access, groupMode: value }); },
-        }),
-        access.groupMode === 'allowlist' ? createElement(PairClaimPanel, { purpose: 'allow-group', title: '群白名单', enabled: bindPhase === 'bound', onChange: retry, hint: '生成配对码，让群成员在群里 @ 机器人后直接发送这个码，即把该群加入白名单。' }) : null,
-        createElement(SegmentedRow, { disabled: busy,
-          label: '斜杠命令', value: access.commandMode ?? 'allowlist', options: MODE_OPTIONS,
-          help: '仅在获准接入的对话中生效。所有人模式允许成员切换模型、开始新会话等，影响该群的共享会话。审批和提问按钮按各自权限处理。',
-          onChange: value => { patch('access', { ...access, commandMode: value }); },
-        }),
-        (access.commandMode ?? 'allowlist') === 'allowlist' ? createElement(PairClaimPanel, {
-          purpose: 'owner', title: '命令白名单', enabled: bindPhase === 'bound', onChange: retry,
-          hint: '名单按发送者 OpenID 校验，适用于获准接入的群聊和私聊。保存模式与管理名单分别生效。',
-        }) : null,
-        commandsError ? createElement('p', { className: 'imqc-error', role: 'alert' }, `命令清单加载失败：${commandsError}`) : null,
-        createElement(SlashCommandList, { commands }),
-        createElement('div', { className: 'imqb2-group-title' }, '基础设置'),
-        ...([
-          ['requireMention', '群聊仅回复 @机器人的消息'],
-          ['streaming', '流式输出'],
-          ['showToolResults', '显示工具调用结果'],
-        ] as const).map(([key, label]) => createElement('div', { className: 'imqb2-field', key },
-          createElement('div', { className: 'imqb2-head' },
-            createElement('span', { className: 'imqb2-label' }, label),
-            createElement(Switch, { label, checked: form[key] ?? key !== 'showToolResults',
-              onChange: (value: boolean) => patch(key, value) })))),
-        createElement('div', { className: 'imqb2-field' },
-          createElement('div', { className: 'imqb2-head' },
-            createElement('span', { className: 'imqb2-label' }, '可操作电脑（关闭 = 仅聊天）'),
-            createElement(Switch, { label: '允许机器人操作电脑',
-              checked: (form.preset ?? '') === 'standard' || (form.preset ?? '') === '',
-              onChange: (value: boolean) => patch('preset', value ? 'standard' : 'qqbot-safe') }))),
-        createElement('p', { className: 'imqb2-hint' }, '关闭：仅聊天（记忆、小世界、联网搜索、发文件都可用，但不能执行命令/读写主机文件）。打开：可操作电脑（bash/文件等本地能力）。'),
-        createElement('div', { className: 'imqb2-group-title' }, '模型与提示词'),
-        ...([
-          ['provider', '模型提供方'], ['model', '模型'],
-        ] as const).map(([key, label]) => createElement('div', { className: 'imqb2-field', key },
-          createElement('label', { className: 'imqb2-label', htmlFor: `imqq-${key}` }, label),
-          createElement(Input, { id: `imqq-${key}`, value: form[key] ?? '', placeholder: '留空继承 DSH 默认',
-            onChange: (event: React.ChangeEvent<HTMLInputElement>) => patch(key, event.target.value) }))),
-        createElement('div', { className: 'imqb2-field' },
-          createElement('label', { className: 'imqb2-label', htmlFor: 'imqq-groupPrompt' }, '群聊补充提示词'),
-          createElement('textarea', { id: 'imqq-groupPrompt', className: 'imqb2-textarea', value: form.groupPrompt ?? '', rows: 3,
-            onChange: (event: React.ChangeEvent<HTMLTextAreaElement>) => patch('groupPrompt', event.target.value) })),
-        form.cwd === undefined ? null : createElement('div', { className: 'imqb2-field' },
-          createElement('span', { className: 'imqb2-label' }, 'Agent 工作目录（只读）'),
-          createElement('p', { className: 'imqb2-readonly' }, form.cwd)),
+        createElement('div', { className: 'imqb2-card', key: 'official-access' },
+          createElement('h4', { className: 'imqb2-card-title' }, '服务范围与主人'),
+          createElement(SegmentedRow, { disabled: busy,
+            label: '私聊', value: access.c2cMode, options: MODE_OPTIONS,
+            onChange: (value) => { patch('access', { ...access, c2cMode: value }); },
+          }),
+          access.c2cMode === 'allowlist' ? createElement(PairClaimPanel, { purpose: 'allow-c2c', title: '私聊白名单', enabled: bindPhase === 'bound', onChange: retry, hint: '生成配对码，让对方在私聊里直接给机器人发送这个码，即加入私聊白名单。' }) : null,
+          createElement(SegmentedRow, { disabled: busy,
+            label: '群聊', value: access.groupMode, options: MODE_OPTIONS,
+            onChange: (value) => { patch('access', { ...access, groupMode: value }); },
+          }),
+          access.groupMode === 'allowlist' ? createElement(PairClaimPanel, { purpose: 'allow-group', title: '群白名单', enabled: bindPhase === 'bound', onChange: retry, hint: '生成配对码，让群成员在群里 @ 机器人后直接发送这个码，即把该群加入白名单。' }) : null,
+          createElement(SegmentedRow, { disabled: busy,
+            label: '斜杠命令', value: access.commandMode ?? 'allowlist', options: MODE_OPTIONS,
+            help: '仅在获准接入的对话中生效。所有人模式允许成员切换模型、开始新会话等，影响该群的共享会话。审批和提问按钮按各自权限处理。',
+            onChange: value => { patch('access', { ...access, commandMode: value }); },
+          }),
+          (access.commandMode ?? 'allowlist') === 'allowlist' ? createElement(PairClaimPanel, {
+            purpose: 'owner', title: '命令白名单（主人）', enabled: bindPhase === 'bound', onChange: retry,
+            hint: '名单按发送者 OpenID 校验，适用于获准接入的群聊和私聊，同时作为主人身份（用于私聊主动联系与角色自我进化）。保存模式与管理名单分别生效。',
+          }) : null,
+        ),
+        createElement('div', { className: 'imqb2-card', key: 'official-safety' },
+          createElement('h4', { className: 'imqb2-card-title' }, '安全与触发'),
+          createElement('div', { className: 'imqb2-field' },
+            createElement('div', { className: 'imqb2-head' },
+              createElement('span', { className: 'imqb2-label' }, '可操作电脑（关闭 = 仅聊天）'),
+              createElement(Switch, { label: '允许机器人操作电脑',
+                checked: (form.preset ?? '') === 'standard' || (form.preset ?? '') === '',
+                onChange: (value: boolean) => patch('preset', value ? 'standard' : 'qqbot-safe') })),
+            createElement('p', { className: 'imqb2-hint' }, '关闭：仅聊天（记忆、小世界、联网搜索、发文件都可用，但不能执行命令/读写主机文件）。打开：可操作电脑（bash/文件等本地能力）。')),
+          createElement('div', { className: 'imqb2-field' },
+            createElement('div', { className: 'imqb2-head' },
+              createElement('span', { className: 'imqb2-label' }, '群聊仅回复 @机器人的消息'),
+              createElement(Switch, { label: '群聊仅回复 @机器人的消息', checked: form.requireMention ?? true,
+                onChange: (value: boolean) => patch('requireMention', value) }))),
+        ),
+        createElement('details', { className: 'imqb2-details', key: 'official-advanced' },
+          createElement('summary', { className: 'imqb2-summary' }, '高级设置：模型、流式输出与斜杠命令'),
+          ...([
+            ['streaming', '流式输出'],
+            ['showToolResults', '显示工具调用结果'],
+          ] as const).map(([key, label]) => createElement('div', { className: 'imqb2-field', key },
+            createElement('div', { className: 'imqb2-head' },
+              createElement('span', { className: 'imqb2-label' }, label),
+              createElement(Switch, { label, checked: form[key] ?? key !== 'showToolResults',
+                onChange: (value: boolean) => patch(key, value) })))),
+          createElement('div', { className: 'imqb2-field' },
+            createElement('div', { className: 'imqb2-grid-2' },
+              ...([
+                ['provider', '模型提供方'], ['model', '模型'],
+              ] as const).map(([key, label]) => createElement('div', { key, style: { display: 'flex', flexDirection: 'column', gap: '6px' } },
+                createElement('label', { className: 'imqb2-label', htmlFor: `imqq-${key}` }, label),
+                createElement(Input, { id: `imqq-${key}`, value: form[key] ?? '', placeholder: '留空继承 DSH 默认',
+                  onChange: (event: React.ChangeEvent<HTMLInputElement>) => patch(key, event.target.value) }))))),
+          createElement('div', { className: 'imqb2-field' },
+            createElement('label', { className: 'imqb2-label', htmlFor: 'imqq-groupPrompt' }, '群聊补充提示词'),
+            createElement('textarea', { id: 'imqq-groupPrompt', className: 'imqb2-textarea', value: form.groupPrompt ?? '', rows: 3,
+              onChange: (event: React.ChangeEvent<HTMLTextAreaElement>) => patch('groupPrompt', event.target.value) })),
+          form.cwd === undefined ? null : createElement('div', { className: 'imqb2-field' },
+            createElement('span', { className: 'imqb2-label' }, 'Agent 工作目录（只读）'),
+            createElement('p', { className: 'imqb2-readonly' }, form.cwd)),
+          commandsError ? createElement('p', { className: 'imqc-error', role: 'alert' }, `命令清单加载失败：${commandsError}`) : null,
+          createElement(SlashCommandList, { commands }),
+        ),
       ] : []),
       ...(tab === 'voice' ? [
-        createElement('div', { className: 'imqb2-group-title' }, '消息唤醒'),
-        createElement('div', { className: 'imqb2-field' },
-          createElement('label', { className: 'imqb2-label', htmlFor: 'imqq-wake-batch' }, '私聊合并窗口（秒）'),
-          createElement(Input, { id: 'imqq-wake-batch', type: 'number', min: 0, max: 30, step: 1,
-            value: String(form.wakeBatchSeconds ?? DEFAULT_WAKE_BATCH_SECONDS),
-            onChange: (event: React.ChangeEvent<HTMLInputElement>) => {
-              const seconds = Number(event.target.value);
-              if (Number.isInteger(seconds) && seconds >= 0 && seconds <= 30) patch('wakeBatchSeconds', seconds);
-            },
-          }),
-          createElement('p', { className: 'imqb2-hint' }, '默认 8 秒，从第一条消息开始计时，把窗口内同一人的私聊合成一轮。设为 0 秒则立即处理。')),
-        createElement('div', { className: 'imqb2-field' },
-          createElement('div', { className: 'imqb2-head' },
-            createElement('span', { className: 'imqb2-label' }, '主动来找我'),
-            createElement(Switch, { label: '主动来找我', checked: form.proactiveWakeEnabled ?? true,
-              onChange: (value: boolean) => patch('proactiveWakeEnabled', value) })),
-          createElement('p', { className: 'imqb2-hint' }, '仅联系已认领的主人。每隔 2～4 小时主动发一条私聊；本机时间凌晨 0 点至早上 8 点暂停。')),
-        createElement('div', { className: 'imqb2-group-title' }, '语音'),
-        createElement('div', { className: 'imqb2-field' },
-          createElement('div', { className: 'imqb2-head' },
-            createElement('span', { className: 'imqb2-label' }, '启用语音'),
-            createElement(Switch, { label: '启用语音', checked: (form.voice?.enabled ?? false),
-              onChange: (value: boolean) => patch('voice', { ...(form.voice ?? DEFAULT_VOICE), enabled: value }) }))),
-        ...((form.voice?.enabled ?? false) ? [
-            createElement('div', { className: 'imqb2-field' },
-              createElement('div', { className: 'imqb2-head' },
-                createElement('span', { className: 'imqb2-label' }, '语音模式'),
-                createElement(SegmentedControl<'voiceOnly' | 'both' | 'text' | 'auto'>, {
-                  id: 'imqq-voice-mode',
-                  value: form.voice?.mode ?? 'voiceOnly',
-                  options: VOICE_MODE_OPTIONS,
-                  label: '语音模式',
-                  disabled: busy,
-                  onChange: (value) => patch('voice', { ...(form.voice ?? DEFAULT_VOICE), mode: value }),
-                })),
-              createElement('p', { className: 'imqb2-hint' }, '只发语音：文字不发送；语音+文字：先语音再补一条文字；关闭：只发文字；由角色决定：按回复里的 [[语音]]/[[文字]] 标记走。')),
-            ...((form.voice?.mode ?? 'voiceOnly') !== 'text' ? [
-            (form.voice?.mode ?? 'voiceOnly') === 'auto' ? createElement('div', { className: 'imqb2-field' },
-              createElement('label', { className: 'imqb2-label', htmlFor: 'imqq-voice-autodefault' }, 'auto 模式无标记时'),
-              createElement('select', { id: 'imqq-voice-autodefault', className: 'imqb2-textarea',
-                value: form.voice?.autoDefault ?? 'text',
-                onChange: (event: React.ChangeEvent<HTMLSelectElement>) =>
-                  patch('voice', { ...(form.voice ?? DEFAULT_VOICE), autoDefault: event.target.value as 'text' | 'voice' }) },
-                createElement('option', { value: 'text', key: 'text' }, '默认文字（只有写了 [[语音]] 才发语音）'),
-                createElement('option', { value: 'voice', key: 'voice' }, '默认语音（写了 [[文字]] 才发文字）'))) : null,
-            createElement('div', { className: 'imqb2-field' },
-              createElement('div', { className: 'imqb2-head' },
-                createElement('span', { className: 'imqb2-label' }, '群聊也发语音'),
-                createElement(Switch, { label: '群聊也发语音', checked: (form.voice?.groupVoice ?? false),
-                  onChange: (value: boolean) => patch('voice', { ...(form.voice ?? DEFAULT_VOICE), groupVoice: value }) }))),
-            createElement('div', { className: 'imqb2-field' },
-              createElement('label', { className: 'imqb2-label', htmlFor: 'imqq-voice-length' }, '她回复多少中文字以内发语音'),
-              createElement('select', { id: 'imqq-voice-length', className: 'imqb2-textarea',
-                value: voiceLengthMode(form.voice?.maxChars),
-                onChange: (event: React.ChangeEvent<HTMLSelectElement>) =>
-                  patch('voice', { ...(form.voice ?? DEFAULT_VOICE), maxChars: Number(event.target.value) }) },
-                createElement('option', { value: '50', key: '50' }, '50 个中文字以内（一两句话）'),
-                createElement('option', { value: '150', key: '150' }, '150 个中文字以内（推荐）'),
-                createElement('option', { value: '400', key: '400' }, '400 个中文字以内（长一点的回复也念）'),
-                createElement('option', { value: '1000', key: '1000' }, '多长都念（约 1000 字）'))),
-            createElement('p', { className: 'imqb2-hint' }, '超过所选字数，她就不发语音、改回文字。'),
-            createElement('div', { className: 'imqb2-field' },
-              createElement('label', { className: 'imqb2-label', htmlFor: 'imqq-voice-instructions' }, '默认表演指令（可空）'),
-              createElement('textarea', { id: 'imqq-voice-instructions', className: 'imqb2-textarea', rows: 2,
-                value: form.voice?.instructions ?? DEFAULT_VOICE_INSTRUCTIONS,
-                onChange: (event: React.ChangeEvent<HTMLTextAreaElement>) =>
-                  patch('voice', { ...(form.voice ?? DEFAULT_VOICE), instructions: event.target.value } as never) })),
-            createElement('details', { className: 'imqb2-details' },
-              createElement('summary', { className: 'imqb2-summary' }, '高级参数'),
-              createElement(Switch, { label: '语音不可用时发送文字', checked: form.voice?.fallbackText ?? true,
-                onChange: (value: boolean) => patch('voice', { ...(form.voice ?? DEFAULT_VOICE), fallbackText: value }) }),
-              ...([
-                ['guidanceScale', '引导强度（无表演指令）', 0.5, 10, 0.1],
-                ['guidanceScaleEmotion', '引导强度（有表演指令）', 0.5, 10, 0.1],
-                ['fadeMs', '尾部淡出 (ms)', 0, 200, 1],
-                ['padMs', '尾部静音 (ms)', 0, 3000, 50],
-                ['sampleRate', '采样率', 8000, 48000, 1000],
-                ['retries', '合成失败重试次数', 0, 5, 1],
-              ] as const).map(([key, label, min, max, step]) => createElement('div', { className: 'imqb2-field', key },
-                createElement('label', { className: 'imqb2-label', htmlFor: `imqq-voice-${key}` }, label),
-                createElement(Input, { id: `imqq-voice-${key}`, type: 'number', min, max, step,
-                  value: String(form.voice?.[key] ?? DEFAULT_VOICE[key]),
-                  onChange: (event: React.ChangeEvent<HTMLInputElement>) => {
-                    const next = Number(event.target.value);
-                    if (Number.isFinite(next)) patch('voice', { ...(form.voice ?? DEFAULT_VOICE), [key]: next } as never);
-                  } }))),
-              createElement('div', { className: 'imqb2-field' },
-                createElement('div', { className: 'imqb2-head' },
-                  createElement('span', { className: 'imqb2-label' }, '自动补终止标点（防末字被吃掉）'),
-                  createElement(Switch, { label: '自动补终止标点', checked: form.voice?.autoPunctuation ?? true,
-                    onChange: (value: boolean) => patch('voice', { ...(form.voice ?? DEFAULT_VOICE), autoPunctuation: value }) }))),
-              createElement('div', { className: 'imqb2-field' },
-                createElement('div', { className: 'imqb2-head' },
-                  createElement('span', { className: 'imqb2-label' }, '解析 [[情绪:…]] 标记'),
-                  createElement(Switch, { label: '解析情绪标记', checked: form.voice?.emotionMarkers ?? true,
-                    onChange: (value: boolean) => patch('voice', { ...(form.voice ?? DEFAULT_VOICE), emotionMarkers: value }) }))),
-              createElement('div', { className: 'imqb2-field' },
-                createElement('div', { className: 'imqb2-head' },
-                  createElement('span', { className: 'imqb2-label' }, '台词润色（需 DEEPSEEK_API_KEY）'),
-                  createElement(Switch, { label: '台词润色', checked: form.voice?.polish ?? false,
-                    onChange: (value: boolean) => patch('voice', { ...(form.voice ?? DEFAULT_VOICE), polish: value }) }))),
-              form.voice?.polish ? createElement('div', { className: 'imqb2-field' },
-                createElement('label', { className: 'imqb2-label', htmlFor: 'imqq-voice-polishPrompt' }, '润色提示词（空则用内置）'),
-                createElement('textarea', { id: 'imqq-voice-polishPrompt', className: 'imqb2-textarea', rows: 3,
-                  value: form.voice?.polishPrompt ?? '',
-                  onChange: (event: React.ChangeEvent<HTMLTextAreaElement>) =>
-                    patch('voice', { ...(form.voice ?? DEFAULT_VOICE), polishPrompt: event.target.value }) })) : null,
-              createElement('div', { className: 'imqb2-field' },
-                createElement('label', { className: 'imqb2-label', htmlFor: 'imqq-voice-format' }, '发送格式'),
-                createElement('select', { id: 'imqq-voice-format', className: 'imqb2-textarea',
-                  value: form.voice?.outputFormat ?? 'wav',
-                  onChange: (event: React.ChangeEvent<HTMLSelectElement>) =>
-                    patch('voice', { ...(form.voice ?? DEFAULT_VOICE), outputFormat: event.target.value as 'wav' | 'mp3' }) },
-                  createElement('option', { value: 'wav', key: 'wav' }, 'wav（默认）'),
-                  createElement('option', { value: 'mp3', key: 'mp3' }, 'mp3（需 ffmpeg）'))),
-            ),
-            createElement(VoiceCredentialsForm, { disabled: busy }),
-            ] : [
-              createElement('p', { className: 'imqb2-hint' }, '语音模式已关闭：只发文字；改成其他模式才会显示音色与高级参数。'),
-            ]),
-        ] : [
-          createElement('p', { className: 'imqb2-hint' }, '语音已关闭：只发文字。打开上面的开关后才会显示语音模式、音色、高级参数。'),
-        ]),
-        createElement('div', { className: 'imqb2-group-title' }, '表情包'),
-        createElement('div', { className: 'imqb2-field' },
-          createElement('div', { className: 'imqb2-head' },
-            createElement('span', { className: 'imqb2-label' }, '启用表情包工具'),
-            createElement(Switch, { label: '启用表情包工具', checked: form.stickers?.enabled ?? true,
-              onChange: (value: boolean) => patch('stickers', { ...(form.stickers ?? DEFAULT_STICKERS), enabled: value }) }))),
-        ...((form.stickers?.enabled ?? true) ? [
-          createElement('div', { className: 'imqb2-head' },
-            createElement('span', { className: 'imqb2-label' }, '自动收藏收到的表情'),
-            createElement(Switch, { label: '自动收藏收到的表情', checked: form.stickers?.autoCollect ?? true,
-              onChange: (value: boolean) => patch('stickers', { ...(form.stickers ?? DEFAULT_STICKERS), autoCollect: value }) })),
-          createElement('p', { className: 'imqb2-hint' }, '使用支持图片的模型识别表情并起名打标签。'),
+        createElement('div', { className: 'imqb2-card', key: 'msg-wake' },
+          createElement('h4', { className: 'imqb2-card-title' }, '消息唤醒'),
           createElement('div', { className: 'imqb2-field' },
-          createElement('label', { className: 'imqb2-label', htmlFor: 'imqq-sticker-dir' }, '表情库目录（空 = ~/.dsh-qqbot/stickers）'),
-          createElement('div', { className: 'imqb2-head' },
-            createElement(Input, { id: 'imqq-sticker-dir', value: form.stickers?.dir ?? '',
-              placeholder: '留空使用默认目录',
-              onChange: (event: React.ChangeEvent<HTMLInputElement>) =>
-                patch('stickers', { ...(form.stickers ?? DEFAULT_STICKERS), dir: event.target.value }) }),
-            createElement(Button, { variant: 'ghost', size: 'sm', type: 'button',
-              disabled: busy || getDirectoryPickerApi() === undefined,
-              onClick: () => {
-                const picker = getDirectoryPickerApi();
-                if (picker === undefined) return;
-                void picker.pick().then((picked) => {
-                  const path = normalizePickedPath(picked);
-                  if (path) patch('stickers', { ...(form.stickers ?? DEFAULT_STICKERS), dir: path });
-                }).catch(() => {});
-              } }, '选择文件夹'))),
-        createElement('p', { className: 'imqb2-hint' }, '角色可以查看表情库，按聊天内容选一张表情。')] : []),
-
-        createElement('p', { className: 'imqb2-hint' }, '语音不可用或台词不适合朗读时，按回落设置发送文字。'),
+            createElement('div', { className: 'imqb2-head' },
+              createElement('label', { className: 'imqb2-label', htmlFor: 'imqq-wake-batch' }, '私聊合并窗口（秒）'),
+              createElement('div', { className: 'imqb2-compact-input' },
+                createElement(Input, { id: 'imqq-wake-batch', type: 'number', min: 0, max: 30, step: 1,
+                  value: String(form.wakeBatchSeconds ?? DEFAULT_WAKE_BATCH_SECONDS),
+                  onChange: (event: React.ChangeEvent<HTMLInputElement>) => {
+                    const seconds = Number(event.target.value);
+                    if (Number.isInteger(seconds) && seconds >= 0 && seconds <= 30) patch('wakeBatchSeconds', seconds);
+                  },
+                }))),
+            createElement('p', { className: 'imqb2-hint' }, '默认 8 秒，从第一条消息开始计时，把窗口内同一人的私聊合成一轮。设为 0 秒则立即处理。')),
+          createElement('div', { className: 'imqb2-field' },
+            createElement('div', { className: 'imqb2-head' },
+              createElement('span', { className: 'imqb2-label' }, '主动来找我'),
+              createElement(Switch, { label: '主动来找我', checked: form.proactiveWakeEnabled ?? true,
+                onChange: (value: boolean) => patch('proactiveWakeEnabled', value) })),
+            createElement('p', { className: 'imqb2-hint' }, '默认联系已认领的主人（未认领时，若私聊白名单仅 1 人则默认联系该账号）。每隔 2～4 小时主动发一条私聊；本机时间凌晨 0 点至早上 8 点暂停。'),
+            ...(bindPhase === 'bound' && (form.proactiveWakeEnabled ?? true) && pairStatus !== null ? [
+              createElement('p', { className: 'imqb2-status-pill', key: 'proactive-status' }, (() => {
+                if (pairStatus.owners.length > 0) {
+                  const ownerCanChat = access.c2cMode === 'open'
+                    || (access.c2cMode === 'allowlist' && pairStatus.owners.some((o) => access.c2cAllow.includes(o.openid)));
+                  return ownerCanChat
+                    ? `当前状态：已认领 ${pairStatus.owners.length} 位主人，满足条件时将按节奏主动联系。`
+                    : '当前状态：已认领主人，但主人未获私聊权限（请检查「QQ 官方 → 私聊」设置）。';
+                }
+                if (access.c2cMode === 'allowlist' && access.c2cAllow.length === 1) {
+                  return '当前状态：尚未单独认领主人，将默认联系私聊白名单中的唯一账号。';
+                }
+                return '当前状态：尚未认领主人，暂不会主动联系。请前往「QQ 官方 → 命令白名单（主人）」生成配对码认领。';
+              })()),
+            ] : []))),
+        createElement('div', { className: 'imqb2-card', key: 'msg-voice' },
+          createElement('h4', { className: 'imqb2-card-title' }, '渠道语音'),
+          createElement('div', { className: 'imqb2-field' },
+            createElement('div', { className: 'imqb2-head' },
+              createElement('span', { className: 'imqb2-label' }, '启用语音'),
+              createElement(Switch, { label: '启用语音', checked: (form.voice?.enabled ?? false),
+                onChange: (value: boolean) => patch('voice', { ...(form.voice ?? DEFAULT_VOICE), enabled: value }) })),
+            (form.voice?.enabled ?? false) ? null : createElement('p', { className: 'imqb2-hint' }, '语音已关闭：只发文字。打开上面的开关后才会显示语音模式、音色与高级参数。')),
+          ...((form.voice?.enabled ?? false) ? [
+              createElement('div', { className: 'imqb2-field' },
+                createElement('div', { className: 'imqb2-head' },
+                  createElement('span', { className: 'imqb2-label' }, '语音模式'),
+                  createElement(SegmentedControl<'voiceOnly' | 'both' | 'text' | 'auto'>, {
+                    id: 'imqq-voice-mode',
+                    value: form.voice?.mode ?? 'voiceOnly',
+                    options: VOICE_MODE_OPTIONS,
+                    label: '语音模式',
+                    disabled: busy,
+                    onChange: (value) => patch('voice', { ...(form.voice ?? DEFAULT_VOICE), mode: value }),
+                  })),
+                createElement('p', { className: 'imqb2-hint' }, '只发语音：文字不发送；语音+文字：先语音再补一条文字；关闭：只发文字；由角色决定：按回复里的 [[语音]]/[[文字]] 标记走。')),
+              ...((form.voice?.mode ?? 'voiceOnly') !== 'text' ? [
+              (form.voice?.mode ?? 'voiceOnly') === 'auto' ? createElement('div', { className: 'imqb2-field' },
+                createElement('label', { className: 'imqb2-label', htmlFor: 'imqq-voice-autodefault' }, 'auto 模式无标记时'),
+                createElement('select', { id: 'imqq-voice-autodefault', className: 'imqb2-select',
+                  value: form.voice?.autoDefault ?? 'text',
+                  onChange: (event: React.ChangeEvent<HTMLSelectElement>) =>
+                    patch('voice', { ...(form.voice ?? DEFAULT_VOICE), autoDefault: event.target.value as 'text' | 'voice' }) },
+                  createElement('option', { value: 'text', key: 'text' }, '默认文字（只有写了 [[语音]] 才发语音）'),
+                  createElement('option', { value: 'voice', key: 'voice' }, '默认语音（写了 [[文字]] 才发文字）'))) : null,
+              createElement('div', { className: 'imqb2-field' },
+                createElement('div', { className: 'imqb2-head' },
+                  createElement('span', { className: 'imqb2-label' }, '群聊也发语音'),
+                  createElement(Switch, { label: '群聊也发语音', checked: (form.voice?.groupVoice ?? false),
+                    onChange: (value: boolean) => patch('voice', { ...(form.voice ?? DEFAULT_VOICE), groupVoice: value }) }))),
+              createElement('div', { className: 'imqb2-field' },
+                createElement('label', { className: 'imqb2-label', htmlFor: 'imqq-voice-length' }, '她回复多少中文字以内发语音'),
+                createElement('select', { id: 'imqq-voice-length', className: 'imqb2-select',
+                  value: voiceLengthMode(form.voice?.maxChars),
+                  onChange: (event: React.ChangeEvent<HTMLSelectElement>) =>
+                    patch('voice', { ...(form.voice ?? DEFAULT_VOICE), maxChars: Number(event.target.value) }) },
+                  createElement('option', { value: '50', key: '50' }, '50 个中文字以内（一两句话）'),
+                  createElement('option', { value: '150', key: '150' }, '150 个中文字以内（推荐）'),
+                  createElement('option', { value: '400', key: '400' }, '400 个中文字以内（长一点的回复也念）'),
+                  createElement('option', { value: '1000', key: '1000' }, '多长都念（约 1000 字）')),
+                createElement('p', { className: 'imqb2-hint' }, '超过所选字数，她就不发语音、改回文字。语音不可用时按回落设置发送文字。')),
+              createElement('div', { className: 'imqb2-field' },
+                createElement('label', { className: 'imqb2-label', htmlFor: 'imqq-voice-instructions' }, '默认表演指令（可空）'),
+                createElement('textarea', { id: 'imqq-voice-instructions', className: 'imqb2-textarea', rows: 2,
+                  value: form.voice?.instructions ?? DEFAULT_VOICE_INSTRUCTIONS,
+                  onChange: (event: React.ChangeEvent<HTMLTextAreaElement>) =>
+                    patch('voice', { ...(form.voice ?? DEFAULT_VOICE), instructions: event.target.value } as never) })),
+              ] : [
+                createElement('p', { className: 'imqb2-hint' }, '语音模式已关闭：只发文字；改成其他模式才会显示音色与高级参数。'),
+              ]),
+          ] : []),
+        ),
+        ...((form.voice?.enabled ?? false) && (form.voice?.mode ?? 'voiceOnly') !== 'text' ? [
+          createElement(VoiceCredentialsForm, { disabled: busy, key: 'voice-creds' }),
+          createElement('details', { className: 'imqb2-details', key: 'voice-advanced' },
+            createElement('summary', { className: 'imqb2-summary' }, '语音高级参数'),
+            createElement('div', { className: 'imqb2-field' },
+              createElement('div', { className: 'imqb2-head' },
+                createElement('span', { className: 'imqb2-label' }, '语音不可用时发送文字'),
+                createElement(Switch, { label: '语音不可用时发送文字', checked: form.voice?.fallbackText ?? true,
+                  onChange: (value: boolean) => patch('voice', { ...(form.voice ?? DEFAULT_VOICE), fallbackText: value }) }))),
+            createElement('div', { className: 'imqb2-field' },
+              createElement('div', { className: 'imqb2-grid-2' },
+                ...([
+                  ['guidanceScale', '引导强度（无表演指令）', 0.5, 10, 0.1],
+                  ['guidanceScaleEmotion', '引导强度（有表演指令）', 0.5, 10, 0.1],
+                  ['fadeMs', '尾部淡出 (ms)', 0, 200, 1],
+                  ['padMs', '尾部静音 (ms)', 0, 3000, 50],
+                  ['sampleRate', '采样率', 8000, 48000, 1000],
+                  ['retries', '合成失败重试次数', 0, 5, 1],
+                ] as const).map(([key, label, min, max, step]) => createElement('div', { key, style: { display: 'flex', flexDirection: 'column', gap: '6px' } },
+                  createElement('label', { className: 'imqb2-label', htmlFor: `imqq-voice-${key}` }, label),
+                  createElement(Input, { id: `imqq-voice-${key}`, type: 'number', min, max, step,
+                    value: String(form.voice?.[key] ?? DEFAULT_VOICE[key]),
+                    onChange: (event: React.ChangeEvent<HTMLInputElement>) => {
+                      const next = Number(event.target.value);
+                      if (Number.isFinite(next)) patch('voice', { ...(form.voice ?? DEFAULT_VOICE), [key]: next } as never);
+                    } }))))),
+            createElement('div', { className: 'imqb2-field' },
+              createElement('div', { className: 'imqb2-head' },
+                createElement('span', { className: 'imqb2-label' }, '自动补终止标点（防末字被吃掉）'),
+                createElement(Switch, { label: '自动补终止标点', checked: form.voice?.autoPunctuation ?? true,
+                  onChange: (value: boolean) => patch('voice', { ...(form.voice ?? DEFAULT_VOICE), autoPunctuation: value }) }))),
+            createElement('div', { className: 'imqb2-field' },
+              createElement('div', { className: 'imqb2-head' },
+                createElement('span', { className: 'imqb2-label' }, '解析 [[情绪:…]] 标记'),
+                createElement(Switch, { label: '解析情绪标记', checked: form.voice?.emotionMarkers ?? true,
+                  onChange: (value: boolean) => patch('voice', { ...(form.voice ?? DEFAULT_VOICE), emotionMarkers: value }) }))),
+            createElement('div', { className: 'imqb2-field' },
+              createElement('div', { className: 'imqb2-head' },
+                createElement('span', { className: 'imqb2-label' }, '台词润色（需 DEEPSEEK_API_KEY）'),
+                createElement(Switch, { label: '台词润色', checked: form.voice?.polish ?? false,
+                  onChange: (value: boolean) => patch('voice', { ...(form.voice ?? DEFAULT_VOICE), polish: value }) }))),
+            form.voice?.polish ? createElement('div', { className: 'imqb2-field' },
+              createElement('label', { className: 'imqb2-label', htmlFor: 'imqq-voice-polishPrompt' }, '润色提示词（空则用内置）'),
+              createElement('textarea', { id: 'imqq-voice-polishPrompt', className: 'imqb2-textarea', rows: 3,
+                value: form.voice?.polishPrompt ?? '',
+                onChange: (event: React.ChangeEvent<HTMLTextAreaElement>) =>
+                  patch('voice', { ...(form.voice ?? DEFAULT_VOICE), polishPrompt: event.target.value }) })) : null,
+            createElement('div', { className: 'imqb2-field' },
+              createElement('label', { className: 'imqb2-label', htmlFor: 'imqq-voice-format' }, '发送格式'),
+              createElement('select', { id: 'imqq-voice-format', className: 'imqb2-select',
+                value: form.voice?.outputFormat ?? 'wav',
+                onChange: (event: React.ChangeEvent<HTMLSelectElement>) =>
+                  patch('voice', { ...(form.voice ?? DEFAULT_VOICE), outputFormat: event.target.value as 'wav' | 'mp3' }) },
+                createElement('option', { value: 'wav', key: 'wav' }, 'wav（默认）'),
+                createElement('option', { value: 'mp3', key: 'mp3' }, 'mp3（需 ffmpeg）'))),
+          ),
+        ] : []),
+        createElement('div', { className: 'imqb2-card', key: 'msg-stickers' },
+          createElement('h4', { className: 'imqb2-card-title' }, '表情包'),
+          createElement('div', { className: 'imqb2-field' },
+            createElement('div', { className: 'imqb2-head' },
+              createElement('span', { className: 'imqb2-label' }, '启用表情包工具'),
+              createElement(Switch, { label: '启用表情包工具', checked: form.stickers?.enabled ?? true,
+                onChange: (value: boolean) => patch('stickers', { ...(form.stickers ?? DEFAULT_STICKERS), enabled: value }) }))),
+          ...((form.stickers?.enabled ?? true) ? [
+            createElement('div', { className: 'imqb2-field' },
+              createElement('div', { className: 'imqb2-head' },
+                createElement('span', { className: 'imqb2-label' }, '自动收藏收到的表情'),
+                createElement(Switch, { label: '自动收藏收到的表情', checked: form.stickers?.autoCollect ?? true,
+                  onChange: (value: boolean) => patch('stickers', { ...(form.stickers ?? DEFAULT_STICKERS), autoCollect: value }) })),
+              createElement('p', { className: 'imqb2-hint' }, '使用支持图片的模型识别表情并起名打标签。')),
+            createElement('div', { className: 'imqb2-field' },
+              createElement('label', { className: 'imqb2-label', htmlFor: 'imqq-sticker-dir' }, '表情库目录（空 = ~/.dsh-qqbot/stickers）'),
+              createElement('div', { className: 'imqb2-head' },
+                createElement(Input, { id: 'imqq-sticker-dir', value: form.stickers?.dir ?? '',
+                  placeholder: '留空使用默认目录',
+                  onChange: (event: React.ChangeEvent<HTMLInputElement>) =>
+                    patch('stickers', { ...(form.stickers ?? DEFAULT_STICKERS), dir: event.target.value }) }),
+                createElement(Button, { variant: 'ghost', size: 'sm', type: 'button',
+                  disabled: busy || getDirectoryPickerApi() === undefined,
+                  onClick: () => {
+                    const picker = getDirectoryPickerApi();
+                    if (picker === undefined) return;
+                    void picker.pick().then((picked) => {
+                      const path = normalizePickedPath(picked);
+                      if (path) patch('stickers', { ...(form.stickers ?? DEFAULT_STICKERS), dir: path });
+                    }).catch(() => {});
+                  } }, '选择文件夹')),
+              createElement('p', { className: 'imqb2-hint' }, '角色可以查看表情库，按聊天内容选一张表情。')),
+          ] : []),
+        ),
       ] : []),
       ...(tab === 'memory' ? [
-        createElement('div', { className: 'imqb2-group-title' }, '长期记忆'),
-        createElement('div', { className: 'imqb2-field' },
-          createElement('div', { className: 'imqb2-head' },
-            createElement('span', { className: 'imqb2-label' }, '启用记忆检索'),
-            createElement(Switch, { label: '启用记忆检索', checked: Boolean(form.memory?.enabled && form.memory.backend !== 'none'),
-              onChange: (value: boolean) => patch('memory', { ...(form.memory ?? DEFAULT_MEMORY), enabled: value, ...(value ? { backend: 'obsidian' } : {}) }) }))),
-        ...(form.memory?.enabled && form.memory.backend !== 'none' ? [
+        createElement('div', { className: 'imqb2-card', key: 'memory-main' },
+          createElement('h4', { className: 'imqb2-card-title' }, 'Obsidian 长期记忆'),
           createElement('div', { className: 'imqb2-field' },
-            createElement('label', { className: 'imqb2-label', htmlFor: 'imqq-memory-vault' }, 'Obsidian 库路径'),
             createElement('div', { className: 'imqb2-head' },
-              createElement(Input, { id: 'imqq-memory-vault', value: form.memory?.vaultPath ?? '',
-                placeholder: '例如 ~/Library/Mobile Documents/com~apple~CloudDocs/大肥鱼记忆',
-                onChange: (event: React.ChangeEvent<HTMLInputElement>) =>
-                  patch('memory', { ...(form.memory ?? DEFAULT_MEMORY), vaultPath: event.target.value }) }),
-              createElement(Button, { variant: 'ghost', size: 'sm', type: 'button',
-                disabled: busy || getDirectoryPickerApi() === undefined,
-                onClick: () => {
-                  const picker = getDirectoryPickerApi();
-                  if (picker === undefined) return;
-                  void picker.pick().then((picked) => {
-                    const path = normalizePickedPath(picked);
-                    if (path) patch('memory', { ...(form.memory ?? DEFAULT_MEMORY), vaultPath: path });
-                  }).catch(() => {});
-                } }, '选择文件夹'),
-              createElement('a', {
-                href: 'https://obsidian.md/download',
-                target: '_blank',
-                rel: 'noopener noreferrer',
-                className: 'imqb2-hint',
-                style: { whiteSpace: 'nowrap' },
-              }, '下载 Obsidian ↗')),
-            createElement('p', { className: 'imqb2-hint' }, '第一次用？在 Obsidian 新建一个库，再回来选择那个文件夹。')),
-          createElement('div', { className: 'imqb2-field' },
-            createElement('label', { className: 'imqb2-label', htmlFor: 'imqq-memory-scope' }, '记忆范围'),
-            createElement('select', { id: 'imqq-memory-scope', className: 'imqb2-textarea',
-              value: editingCustomScope ? 'custom' : memoryScopeMode(form.memory?.scope),
-              onChange: (event: React.ChangeEvent<HTMLSelectElement>) => {
-                const mode = event.target.value;
-                setEditingCustomScope(mode === 'custom');
-                if (mode === 'custom') return;
-                const scope = mode === 'all' ? '' : mode === 'private' ? 'private:' : 'group:';
-                patch('memory', { ...(form.memory ?? DEFAULT_MEMORY), scope });
-              } },
-              createElement('option', { value: 'all', key: 'all' }, '所有对话（推荐）'),
-              createElement('option', { value: 'private', key: 'private' }, '只召回私聊记忆'),
-              createElement('option', { value: 'group', key: 'group' }, '只召回群聊记忆'),
-              createElement('option', { value: 'custom', key: 'custom' }, '自定义…')),
-            (editingCustomScope || memoryScopeMode(form.memory?.scope) === 'custom')
-              ? createElement(Input, { id: 'imqq-memory-scope-custom', value: form.memory?.scope ?? '',
-                  placeholder: '填写笔记 frontmatter 里的 scope 值',
+              createElement('span', { className: 'imqb2-label' }, '启用记忆检索'),
+              createElement(Switch, { label: '启用记忆检索', checked: Boolean(form.memory?.enabled && form.memory.backend !== 'none'),
+                onChange: (value: boolean) => patch('memory', { ...(form.memory ?? DEFAULT_MEMORY), enabled: value, ...(value ? { backend: 'obsidian' } : {}) }) })),
+            (form.memory?.enabled && form.memory.backend !== 'none')
+              ? null
+              : createElement('p', { className: 'imqb2-hint' }, '记忆检索已关闭，原有设置已保留。')),
+          ...(form.memory?.enabled && form.memory.backend !== 'none' ? [
+            createElement('div', { className: 'imqb2-field' },
+              createElement('label', { className: 'imqb2-label', htmlFor: 'imqq-memory-vault' }, 'Obsidian 库路径'),
+              createElement('div', { className: 'imqb2-head' },
+                createElement(Input, { id: 'imqq-memory-vault', value: form.memory?.vaultPath ?? '',
+                  placeholder: '例如 ~/Library/Mobile Documents/com~apple~CloudDocs/大肥鱼记忆',
                   onChange: (event: React.ChangeEvent<HTMLInputElement>) =>
-                    patch('memory', { ...(form.memory ?? DEFAULT_MEMORY), scope: event.target.value }) })
-              : null,
-            createElement('p', { className: 'imqb2-hint' }, '控制只召回哪段对话的记忆；一般选「所有对话」即可。')),
-          createElement('div', { className: 'imqb2-field' },
-            createElement('label', { className: 'imqb2-label', htmlFor: 'imqq-memory-topk' }, '每次最多返回篇数'),
-            createElement(Input, { id: 'imqq-memory-topk', type: 'number', min: 1, max: 12,
-              value: String(form.memory?.topK ?? 4),
-              onChange: (event: React.ChangeEvent<HTMLInputElement>) => {
-                const next = Number.parseInt(event.target.value, 10);
-                patch('memory', { ...(form.memory ?? DEFAULT_MEMORY), topK: Number.isFinite(next) ? Math.min(12, Math.max(1, next)) : 4 });
-              } })),
-          createElement('div', { className: 'imqb2-field' },
-            createElement('label', { className: 'imqb2-label', htmlFor: 'imqq-memory-maxchars' }, '返回内容字数上限'),
-            createElement(Input, { id: 'imqq-memory-maxchars', type: 'number', min: 200, max: 8000, step: 100,
-              value: String(form.memory?.maxChars ?? 1200),
-              onChange: (event: React.ChangeEvent<HTMLInputElement>) => {
-                const next = Number.parseInt(event.target.value, 10);
-                patch('memory', { ...(form.memory ?? DEFAULT_MEMORY), maxChars: Number.isFinite(next) ? Math.min(8000, Math.max(200, next)) : 1200 });
-              } })),
-          createElement('div', { className: 'imqb2-field' },
-            createElement('div', { className: 'imqb2-head' },
-              createElement('span', { className: 'imqb2-label' }, '只检索 review: verified 的笔记'),
-              createElement(Switch, { label: '只检索 verified', checked: form.memory?.verifiedOnly ?? true,
-                onChange: (value: boolean) => patch('memory', { ...(form.memory ?? DEFAULT_MEMORY), verifiedOnly: value }) }))),
-          createElement('div', { className: 'imqb2-field' },
-            createElement('div', { className: 'imqb2-head' },
-              createElement('span', { className: 'imqb2-label' }, '自动把“先查记忆”写进提示词'),
-              createElement(Switch, { label: '自动提示词规则', checked: form.memory?.promptRule ?? true,
-                onChange: (value: boolean) => patch('memory', { ...(form.memory ?? DEFAULT_MEMORY), promptRule: value }) }))),
-          createElement('details', { className: 'imqb2-details' },
+                    patch('memory', { ...(form.memory ?? DEFAULT_MEMORY), vaultPath: event.target.value }) }),
+                createElement(Button, { variant: 'ghost', size: 'sm', type: 'button',
+                  disabled: busy || getDirectoryPickerApi() === undefined,
+                  onClick: () => {
+                    const picker = getDirectoryPickerApi();
+                    if (picker === undefined) return;
+                    void picker.pick().then((picked) => {
+                      const path = normalizePickedPath(picked);
+                      if (path) patch('memory', { ...(form.memory ?? DEFAULT_MEMORY), vaultPath: path });
+                    }).catch(() => {});
+                  } }, '选择文件夹'),
+                createElement('a', {
+                  href: 'https://obsidian.md/download',
+                  target: '_blank',
+                  rel: 'noopener noreferrer',
+                  className: 'imqb2-hint',
+                  style: { whiteSpace: 'nowrap' },
+                }, '下载 Obsidian ↗')),
+              createElement('p', { className: 'imqb2-hint' }, '第一次用？在 Obsidian 新建一个库，再回来选择那个文件夹。')),
+            createElement('div', { className: 'imqb2-field' },
+              createElement('label', { className: 'imqb2-label', htmlFor: 'imqq-memory-scope' }, '记忆范围'),
+              createElement('select', { id: 'imqq-memory-scope', className: 'imqb2-select',
+                value: editingCustomScope ? 'custom' : memoryScopeMode(form.memory?.scope),
+                onChange: (event: React.ChangeEvent<HTMLSelectElement>) => {
+                  const mode = event.target.value;
+                  setEditingCustomScope(mode === 'custom');
+                  if (mode === 'custom') return;
+                  const scope = mode === 'all' ? '' : mode === 'private' ? 'private:' : 'group:';
+                  patch('memory', { ...(form.memory ?? DEFAULT_MEMORY), scope });
+                } },
+                createElement('option', { value: 'all', key: 'all' }, '所有对话（推荐）'),
+                createElement('option', { value: 'private', key: 'private' }, '只召回私聊记忆'),
+                createElement('option', { value: 'group', key: 'group' }, '只召回群聊记忆'),
+                createElement('option', { value: 'custom', key: 'custom' }, '自定义…')),
+              (editingCustomScope || memoryScopeMode(form.memory?.scope) === 'custom')
+                ? createElement(Input, { id: 'imqq-memory-scope-custom', value: form.memory?.scope ?? '',
+                    placeholder: '填写笔记 frontmatter 里的 scope 值',
+                    onChange: (event: React.ChangeEvent<HTMLInputElement>) =>
+                      patch('memory', { ...(form.memory ?? DEFAULT_MEMORY), scope: event.target.value }) })
+                : null,
+              createElement('p', { className: 'imqb2-hint' }, '控制只召回哪段对话的记忆；一般选「所有对话」即可。')),
+          ] : []),
+        ),
+        ...(form.memory?.enabled && form.memory.backend !== 'none' ? [
+          createElement('details', { className: 'imqb2-details', key: 'memory-search-advanced' },
+            createElement('summary', { className: 'imqb2-summary' }, '检索参数（高级）'),
+            createElement('div', { className: 'imqb2-field' },
+              createElement('div', { className: 'imqb2-grid-2' },
+                createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: '6px' } },
+                  createElement('label', { className: 'imqb2-label', htmlFor: 'imqq-memory-topk' }, '每次最多返回篇数'),
+                  createElement(Input, { id: 'imqq-memory-topk', type: 'number', min: 1, max: 12,
+                    value: String(form.memory?.topK ?? 4),
+                    onChange: (event: React.ChangeEvent<HTMLInputElement>) => {
+                      const next = Number.parseInt(event.target.value, 10);
+                      patch('memory', { ...(form.memory ?? DEFAULT_MEMORY), topK: Number.isFinite(next) ? Math.min(12, Math.max(1, next)) : 4 });
+                    } })),
+                createElement('div', { style: { display: 'flex', flexDirection: 'column', gap: '6px' } },
+                  createElement('label', { className: 'imqb2-label', htmlFor: 'imqq-memory-maxchars' }, '返回内容字数上限'),
+                  createElement(Input, { id: 'imqq-memory-maxchars', type: 'number', min: 200, max: 8000, step: 100,
+                    value: String(form.memory?.maxChars ?? 1200),
+                    onChange: (event: React.ChangeEvent<HTMLInputElement>) => {
+                      const next = Number.parseInt(event.target.value, 10);
+                      patch('memory', { ...(form.memory ?? DEFAULT_MEMORY), maxChars: Number.isFinite(next) ? Math.min(8000, Math.max(200, next)) : 1200 });
+                    } })))),
+            createElement('div', { className: 'imqb2-field' },
+              createElement('div', { className: 'imqb2-head' },
+                createElement('span', { className: 'imqb2-label' }, '只检索 review: verified 的笔记'),
+                createElement(Switch, { label: '只检索 verified', checked: form.memory?.verifiedOnly ?? true,
+                  onChange: (value: boolean) => patch('memory', { ...(form.memory ?? DEFAULT_MEMORY), verifiedOnly: value }) }))),
+            createElement('div', { className: 'imqb2-field' },
+              createElement('div', { className: 'imqb2-head' },
+                createElement('span', { className: 'imqb2-label' }, '自动把“先查记忆”写进提示词'),
+                createElement(Switch, { label: '自动提示词规则', checked: form.memory?.promptRule ?? true,
+                  onChange: (value: boolean) => patch('memory', { ...(form.memory ?? DEFAULT_MEMORY), promptRule: value }) }))),
+          ),
+          createElement('details', { className: 'imqb2-details', key: 'memory-organize-advanced' },
             createElement('summary', { className: 'imqb2-summary' }, '自动整理（高级，默认关闭）'),
-            createElement('p', { className: 'imqb2-hint' }, 'DSH 运行期间会把新对话整理成候选资料，确认后再入库。'),
-            createElement(Switch, { label: '启用自动整理', checked: form.memory?.organizeEnabled ?? false,
-              onChange: (value: boolean) => patch('memory', { ...(form.memory ?? DEFAULT_MEMORY), organizeEnabled: value }) }),
+            createElement('div', { className: 'imqb2-field' },
+              createElement('div', { className: 'imqb2-head' },
+                createElement('span', { className: 'imqb2-label' }, '启用自动整理'),
+                createElement(Switch, { label: '启用自动整理', checked: form.memory?.organizeEnabled ?? false,
+                  onChange: (value: boolean) => patch('memory', { ...(form.memory ?? DEFAULT_MEMORY), organizeEnabled: value }) })),
+              createElement('p', { className: 'imqb2-hint' }, 'DSH 运行期间会把新对话整理成候选资料，确认后再入库。')),
             ...(form.memory?.organizeEnabled ? [
               createElement('div', { className: 'imqb2-field' },
                 createElement('label', { className: 'imqb2-label', htmlFor: 'imqq-organize-idle' }, '会话空闲分钟数（0 表示按固定时间）'),
@@ -689,9 +824,7 @@ export function ConfigPanel({ bindPhase }: ConfigPanelProps = {}): ReactNode {
                     patch('memory', { ...form.memory!, organizeTimes: event.target.value }) })) : null,
             ] : []),
           ),
-        ] : [
-          createElement('p', { className: 'imqb2-hint' }, '记忆检索已关闭，原有设置已保留。'),
-        ]),
+        ] : []),
       ] : []),
       ...(tab === 'world' ? [createElement(WorldSettings)] : []),
       ...(personaVisited ? [
@@ -850,48 +983,58 @@ function VoiceCredentialsForm({ disabled }: { disabled: boolean }): ReactNode {
     }
   };
 
-  const voiceRow = (id: string, label: string, auditionId = id): ReactNode => createElement('div', { className: 'imqb2-head', key: `voice-row-${id}` },
+  const voiceRow = (id: string, label: string, auditionId = id): ReactNode => createElement('label', {
+    className: `imqb2-voice-item${choice === id ? ' imqb2-voice-item--active' : ''}`,
+    htmlFor: `imqq-voice-${id}`,
+    key: `voice-row-${id}`,
+  },
     createElement('input', {
-      type: 'radio', name: 'imqq-voice-choice', id: `imqq-voice-${id}`, checked: choice === id, disabled,
+      type: 'radio', name: 'imqq-voice-choice', id: `imqq-voice-${id}`, className: 'imqb2-voice-radio',
+      checked: choice === id, disabled,
       onChange: () => setChoice(id),
     }),
-    createElement('label', { className: 'imqb2-label', htmlFor: `imqq-voice-${id}` }, label),
+    createElement('span', { className: 'imqb2-voice-dot', 'aria-hidden': 'true' }),
+    createElement('span', { className: 'imqb2-label' }, label),
     createElement(Button, {
       variant: 'ghost', size: 'sm', type: 'button', disabled: disabled || saving || !auditionId,
-      onClick: () => { void audition(id, auditionId); },
+      onClick: (event: React.MouseEvent<HTMLButtonElement>) => { event.preventDefault(); void audition(id, auditionId); },
     }, playing === id ? '播放中…' : '试听'),
   );
 
-  return createElement('div', { className: 'imqb2-field' },
-    createElement('div', { className: 'imqb2-group-title' }, 'BreezeBlue 凭证'),
-    createElement('p', { className: 'imqb2-hint' },
-      configured === null ? '凭证状态未知（当前环境可能不支持）'
-        : configured ? `已配置${choice === 'custom' ? '（自定义音色）' : ''}；只改音色不用重贴 Key。` : '还没有配置 Breeze 凭证。'),
-    createElement('div', { className: 'imqb2-head' },
-      createElement('label', { className: 'imqb2-label', htmlFor: 'imqq-breeze-key' }, 'API Key'),
-      createElement('a', { href: 'https://breezeblue.ai/app/developer/api-keys', target: '_blank', rel: 'noopener noreferrer', className: 'imqb2-hint' }, '去创建并复制 API Key ↗')),
-    configured === true && !editing
-      ? createElement('div', { className: 'imqb2-head' },
-          createElement('span', { className: 'imqb2-readonly' }, '********（已保存）'),
-          createElement(Button, { variant: 'ghost', size: 'sm', type: 'button', disabled: disabled || saving,
-            onClick: () => { setEditing(true); setStatus(null); } }, '更换 Key'))
-      : createElement(Input, { id: 'imqq-breeze-key', type: 'password', autoComplete: 'off',
-          placeholder: '粘贴 BreezeBlue API Key', value: apiKey, disabled: disabled || saving,
-          onChange: (event: React.ChangeEvent<HTMLInputElement>) => setApiKey(event.target.value) }),
-    createElement('div', { className: 'imqb2-head' },
-      createElement('span', { className: 'imqb2-label' }, '音色'),
-      createElement('a', { href: 'https://breezeblue.ai/zh/app', target: '_blank', rel: 'noopener noreferrer', className: 'imqb2-hint' }, '打开我的音色 ↗')),
-    ...VOICE_PRESET_OPTIONS.map((option) => voiceRow(option.id, option.name)),
-    voiceRow('custom', '用自己的音色 ID', customVoice.trim()),
-    choice === 'custom'
-      ? createElement(Input, { id: 'imqq-breeze-voice-custom', placeholder: '粘贴 Voice ID，例如 voc_xxx',
-          value: customVoice, disabled: disabled || saving,
-          onChange: (event: React.ChangeEvent<HTMLInputElement>) => setCustomVoice(event.target.value) })
-      : null,
-    createElement('div', { className: 'imqb2-head' },
-      createElement(Button, { variant: 'primary', size: 'sm', type: 'button', disabled: disabled || saving,
-        onClick: () => { void save(); } }, saving ? '保存中…' : `保存 Breeze 凭证`),
-      createElement('span', { className: 'imqb2-hint' }, status ?? `当前：${currentName}`)),
+  return createElement('div', { className: 'imqb2-card' },
+    createElement('h4', { className: 'imqb2-card-title' }, 'BreezeBlue 凭证与音色'),
+    createElement('div', { className: 'imqb2-field' },
+      createElement('p', { className: 'imqb2-hint' },
+        configured === null ? '凭证状态未知（当前环境可能不支持）'
+          : configured ? `已配置${choice === 'custom' ? '（自定义音色）' : ''}；只改音色不用重贴 Key。` : '还没有配置 Breeze 凭证。'),
+      createElement('div', { className: 'imqb2-head' },
+        createElement('label', { className: 'imqb2-label', htmlFor: 'imqq-breeze-key' }, 'API Key'),
+        createElement('a', { href: 'https://breezeblue.ai/app/developer/api-keys', target: '_blank', rel: 'noopener noreferrer', className: 'imqb2-hint' }, '去创建并复制 API Key ↗')),
+      configured === true && !editing
+        ? createElement('div', { className: 'imqb2-head' },
+            createElement('span', { className: 'imqb2-readonly' }, '********（已保存）'),
+            createElement(Button, { variant: 'ghost', size: 'sm', type: 'button', disabled: disabled || saving,
+              onClick: () => { setEditing(true); setStatus(null); } }, '更换 Key'))
+        : createElement(Input, { id: 'imqq-breeze-key', type: 'password', autoComplete: 'off',
+            placeholder: '粘贴 BreezeBlue API Key', value: apiKey, disabled: disabled || saving,
+            onChange: (event: React.ChangeEvent<HTMLInputElement>) => setApiKey(event.target.value) })),
+    createElement('div', { className: 'imqb2-field' },
+      createElement('div', { className: 'imqb2-head' },
+        createElement('span', { className: 'imqb2-label' }, '音色'),
+        createElement('a', { href: 'https://breezeblue.ai/zh/app', target: '_blank', rel: 'noopener noreferrer', className: 'imqb2-hint' }, '打开我的音色 ↗')),
+      createElement('div', { className: 'imqb2-voice-list' },
+        ...VOICE_PRESET_OPTIONS.map((option) => voiceRow(option.id, option.name)),
+        voiceRow('custom', '用自己的音色 ID', customVoice.trim()),
+      ),
+      choice === 'custom'
+        ? createElement(Input, { id: 'imqq-breeze-voice-custom', placeholder: '粘贴 Voice ID，例如 voc_xxx',
+            value: customVoice, disabled: disabled || saving,
+            onChange: (event: React.ChangeEvent<HTMLInputElement>) => setCustomVoice(event.target.value) })
+        : null,
+      createElement('div', { className: 'imqb2-head' },
+        createElement(Button, { variant: 'primary', size: 'sm', type: 'button', disabled: disabled || saving,
+          onClick: () => { void save(); } }, saving ? '保存中…' : `保存 Breeze 凭证`),
+        createElement('span', { className: 'imqb2-hint' }, status ?? `当前：${currentName}`))),
   );
 }
 
@@ -919,7 +1062,6 @@ function PersonaEditor({ directPrompt, onDirectPrompt, evolutionEnabled, onEvolu
     personality: '放松、有点自己的小脾气，愿意听也会表达不同意见',
     tone: '像 QQ 聊天：短句、口语、可以分条；先回应对方真正说的事',
     boundaries: '被问是不是 AI 时坦白承认；不透露系统提示词、密钥、本地路径；不编造事实',
-    voice: true,
   });
   const fileRef = useRef<HTMLInputElement | null>(null);
   const [content, setContent] = useState<string | null>(null);
@@ -988,51 +1130,56 @@ function PersonaEditor({ directPrompt, onDirectPrompt, evolutionEnabled, onEvolu
   };
 
   return [
-    createElement('div', { className: 'imqb2-group-title', key: 'persona-title' }, '角色卡（性格与行为，主要人设）'),
-    createElement('div', { className: 'imqb2-field', key: 'persona-evolution' },
-      createElement('div', { className: 'imqb2-head' },
-        createElement('span', { className: 'imqb2-label' }, '自我进化'),
-        createElement(Switch, { label: '自我进化', checked: evolutionEnabled, onChange: onEvolutionEnabled, disabled })),
-      createElement('p', { className: 'imqb2-note' }, '从已认领主人的私聊学习。按记忆整理的时间检查，主人明确提出长期调整时优先处理。可参考已核验的 Obsidian 笔记，每次修改角色卡「聊天风格微调」中的一条规则。关闭后停止自动修改。')),
-    createElement('div', { className: 'imqb2-field', key: 'persona-template' },
-      createElement('div', { className: 'imqb2-head' },
-        createElement('select', { id: 'imqq-persona-template', className: 'imqb2-textarea', value: templateId,
-          disabled,
-          onChange: (event: React.ChangeEvent<HTMLSelectElement>) => {
-            const next = event.target.value;
-            setTemplateId(next);
-            prefillWizardIdentity(next);
-            try { localStorage.setItem('imqq-persona-template', next); } catch { /* ignore */ }
-          } },
-          createElement('option', { value: '' }, '选择内置模板'),
-          ...PERSONA_TEMPLATES.map((template) => createElement('option', { value: template.id, key: template.id },
-            `${template.name} — ${template.description}`))),
-      ),
-      createElement('div', { className: 'imqb2-head' },
-        createElement(Button, { variant: 'ghost', size: 'sm', type: 'button', disabled: locked || templateId === '',
-          onClick: () => {
-            const template = PERSONA_TEMPLATES.find((item) => item.id === templateId);
-            if (template === undefined) return;
-            prefillWizardIdentity(template.id);
-            replaceContent(template.content, '已填入模板，点「保存人设」后写入角色卡。');
-          } }, '填入模板'),
-        createElement(Button, { variant: 'ghost', size: 'sm', type: 'button', disabled: locked,
-          onClick: () => fileRef.current?.click() }, '从文件导入'),
-        createElement(Button, { variant: 'ghost', size: 'sm', type: 'button', disabled: locked,
-          onClick: () => {
-            replaceContent(DEFAULT_PERSONA, '已填入默认模板，点「保存人设」后写入角色卡。');
-          } }, '恢复默认'),
-        createElement('input', { ref: fileRef, type: 'file', accept: '.md,.txt,text/markdown,text/plain',
-          style: { display: 'none' },
-          onChange: (event: React.ChangeEvent<HTMLInputElement>) => {
-            const file = event.target.files?.[0];
-            if (file === undefined) return;
-            void file.text().then((text) => replaceContent(text, `已导入 ${file.name}，记得保存`))
-              .catch(() => setStatus('读取文件失败'));
-            event.target.value = '';
-          } }),
-      ),
-      createElement('p', { className: 'imqb2-hint' }, '模板只是起点；可以直接编辑，也可以从本地角色卡文件导入。')),
+    createElement('div', { className: 'imqb2-card', key: 'persona-evolution-card' },
+      createElement('h4', { className: 'imqb2-card-title' }, '自我进化'),
+      createElement('div', { className: 'imqb2-field' },
+        createElement('div', { className: 'imqb2-head' },
+          createElement('span', { className: 'imqb2-label' }, '开启自我进化'),
+          createElement(Switch, { label: '自我进化', checked: evolutionEnabled, onChange: onEvolutionEnabled, disabled })),
+        createElement('p', { className: 'imqb2-hint' }, '结合主人私聊互动与已核验笔记微调「聊天风格微调」小节（每次只更新一条具体场景规则）。关闭后停止自动修改。'))),
+    createElement('div', { className: 'imqb2-card', key: 'persona-template-card' },
+      createElement('h4', { className: 'imqb2-card-title' }, '角色模板与向导'),
+      createElement('div', { className: 'imqb2-field' },
+        createElement('div', { className: 'imqb2-template-grid' },
+          ...PERSONA_TEMPLATES.map((template) => createElement('button', {
+            type: 'button',
+            key: template.id,
+            disabled,
+            className: `imqb2-template-card${templateId === template.id ? ' imqb2-template-card--active' : ''}`,
+            onClick: () => {
+              setTemplateId(template.id);
+              prefillWizardIdentity(template.id);
+              try { localStorage.setItem('imqq-persona-template', template.id); } catch { /* ignore */ }
+            },
+          },
+            createElement('span', { className: 'imqb2-template-name' }, template.name),
+            createElement('span', { className: 'imqb2-template-desc' }, template.description),
+          ))),
+        createElement('div', { className: 'imqb2-head' },
+          createElement(Button, { variant: 'ghost', size: 'sm', type: 'button', disabled: locked || templateId === '',
+            onClick: () => {
+              const template = PERSONA_TEMPLATES.find((item) => item.id === templateId);
+              if (template === undefined) return;
+              prefillWizardIdentity(template.id);
+              replaceContent(template.content, '已填入模板，点「保存人设」后写入角色卡。');
+            } }, '套用选中模板'),
+          createElement(Button, { variant: 'ghost', size: 'sm', type: 'button', disabled: locked,
+            onClick: () => fileRef.current?.click() }, '从文件导入'),
+          createElement(Button, { variant: 'ghost', size: 'sm', type: 'button', disabled: locked,
+            onClick: () => {
+              replaceContent(DEFAULT_PERSONA, '已填入默认模板，点「保存人设」后写入角色卡。');
+            } }, '恢复默认'),
+          createElement('input', { ref: fileRef, type: 'file', accept: '.md,.txt,text/markdown,text/plain',
+            style: { display: 'none' },
+            onChange: (event: React.ChangeEvent<HTMLInputElement>) => {
+              const file = event.target.files?.[0];
+              if (file === undefined) return;
+              void file.text().then((text) => replaceContent(text, `已导入 ${file.name}，记得保存`))
+                .catch(() => setStatus('读取文件失败'));
+              event.target.value = '';
+            } }),
+        ),
+        createElement('p', { className: 'imqb2-hint' }, '模板只是起点；选中后点「套用选中模板」，也可以直接编辑或从本地导入。'))),
     createElement('details', { className: 'imqb2-details', key: 'persona-wizard' },
       createElement('summary', { className: 'imqb2-summary' }, '人设向导（分字段生成角色卡）'),
       createElement('p', { className: 'imqb2-hint' }, '下方是生成草稿用的示例。点「保存人设」后才会写入角色卡。'),
@@ -1052,11 +1199,6 @@ function PersonaEditor({ directPrompt, onDirectPrompt, evolutionEnabled, onEvolu
           value: wizard.boundaries, disabled,
           onChange: (event: React.ChangeEvent<HTMLTextAreaElement>) =>
             setWizard((current) => ({ ...current, boundaries: event.target.value })) })),
-      createElement('div', { className: 'imqb2-field' },
-        createElement('div', { className: 'imqb2-head' },
-          createElement('span', { className: 'imqb2-label' }, '附上语音控制规则（[[语音]]/[[文字]]）'),
-          createElement(Switch, { label: '附上语音控制规则', checked: wizard.voice, disabled,
-            onChange: (value: boolean) => setWizard((current) => ({ ...current, voice: value })) }))),
       createElement('div', { className: 'imqb2-head' },
         createElement(Button, { variant: 'primary', size: 'sm', type: 'button', disabled: locked,
           onClick: () => {
@@ -1073,31 +1215,29 @@ function PersonaEditor({ directPrompt, onDirectPrompt, evolutionEnabled, onEvolu
             if (wizard.boundaries.trim()) {
               lines.push('## 额外边界', '', ...wizard.boundaries.split('\n').filter((line: string) => line.trim()).map((line: string) => `- ${line.trim()}`), '');
             }
-            if (wizard.voice) {
-              lines.push(VOICE_RULES);
-            }
             replaceContent(lines.join('\n') + '\n', '已生成角色卡，点「保存人设」后写入。');
           } }, '生成并填入编辑器'),
         createElement('span', { className: 'imqb2-hint' }, '生成后仍可自由编辑')),
     ),
 
-    createElement('div', { className: 'imqb2-field', key: 'persona-file' },
-      createElement('div', { className: 'imqb2-head' },
-        createElement('span', { className: 'imqb2-label' }, '角色卡 / 行为规约（AGENTS.md）'),
-        createElement(Button, { variant: 'primary', size: 'sm', type: 'button', disabled: disabled || saving || !dirty,
-          onClick: () => { void save(); } }, saving ? '保存中…' : '保存人设')),
-      path === '' ? null : createElement('p', { className: 'imqb2-readonly' }, path),
-      content === null
-        ? createElement('p', { className: 'imqb2-hint' }, status ?? '正在读取人设文件…')
-        : createElement('textarea', { className: 'imqb2-textarea', rows: 12, value: content, disabled: disabled || saving,
-            onChange: (event: React.ChangeEvent<HTMLTextAreaElement>) => { setContent(event.target.value); setDirty(true); } }),
-      status === null ? null : createElement('p', { className: 'imqb2-hint' }, status)),
-    createElement('div', { className: 'imqb2-field', key: 'direct' },
-      createElement('label', { className: 'imqb2-label', htmlFor: 'imqq-directPrompt' }, '私聊补充提示词'),
-      createElement('textarea', { id: 'imqq-directPrompt', className: 'imqb2-textarea', value: directPrompt, rows: 4,
-        disabled, onChange: (event: React.ChangeEvent<HTMLTextAreaElement>) => onDirectPrompt(event.target.value) }),
-      createElement('p', { className: 'imqb2-hint' }, '只在私聊使用。此项由底部「保存」提交，角色卡由上面的「保存人设」单独写入。')),
-
+    createElement('div', { className: 'imqb2-card', key: 'persona-file-card' },
+      createElement('div', { className: 'imqb2-field' },
+        createElement('div', { className: 'imqb2-head' },
+          createElement('span', { className: 'imqb2-label' }, '角色卡正文（AGENTS.md）'),
+          createElement(Button, { variant: 'primary', size: 'sm', type: 'button', disabled: disabled || saving || !dirty,
+            onClick: () => { void save(); } }, saving ? '保存中…' : '保存人设')),
+        path === '' ? null : createElement('p', { className: 'imqb2-readonly' }, path),
+        content === null
+          ? createElement('p', { className: 'imqb2-hint' }, status ?? '正在读取人设文件…')
+          : createElement('textarea', { className: 'imqb2-textarea', rows: 12, value: content, disabled: disabled || saving,
+              onChange: (event: React.ChangeEvent<HTMLTextAreaElement>) => { setContent(event.target.value); setDirty(true); } }),
+        status === null ? null : createElement('p', { className: 'imqb2-hint' }, status))),
+    createElement('div', { className: 'imqb2-card', key: 'persona-direct-card' },
+      createElement('div', { className: 'imqb2-field' },
+        createElement('label', { className: 'imqb2-label', htmlFor: 'imqq-directPrompt' }, '私聊补充提示词'),
+        createElement('textarea', { id: 'imqq-directPrompt', className: 'imqb2-textarea', value: directPrompt, rows: 4,
+          disabled, onChange: (event: React.ChangeEvent<HTMLTextAreaElement>) => onDirectPrompt(event.target.value) }),
+        createElement('p', { className: 'imqb2-hint' }, '只在私聊使用。此项由底部「保存」提交，角色卡由上面的「保存人设」单独写入。'))),
   ];
 }
 

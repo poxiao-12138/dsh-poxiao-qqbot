@@ -13,6 +13,10 @@ export interface AccountAccessDeps {
     store?: MemberStore;
     pairing?: PairingService;
 }
+/**
+ * 扫码绑定后自动把绑定者认领为主人（幂等、保留已有资料）。
+ */
+export declare function claimBoundOwner(appId: string, userOpenid: string | undefined, dataDir?: string): boolean;
 export declare class AccountAccessService {
     readonly config: ImQQBotConfig;
     readonly logger: Logger;
@@ -59,5 +63,13 @@ export declare class AccountAccessService {
     currentAccess(): AccessControlConfig;
     commandAccessError(actor?: string): string | undefined;
     isOwner(actor?: string): boolean;
+    /**
+     * 用于私聊主动联系与角色自我进化的有效主人列表：
+     * - 命令白名单（owners）非空时，严格只认 owners；
+     * - owners 为空且私聊处于白名单模式、名单恰有 1 人时（典型个人机器人 / 扫码绑定存量用户），
+     *   兜底将该唯一私聊账号视为主人，不影响斜杠命令白名单权限。
+     */
+    effectiveOwnerIds(): string[];
+    isEffectiveOwner(actor?: string): boolean;
 }
 //# sourceMappingURL=account-service.d.ts.map

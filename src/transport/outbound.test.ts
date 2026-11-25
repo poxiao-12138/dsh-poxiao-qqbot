@@ -481,7 +481,7 @@ describe('OutboundRouter: 主动推送策略与非 QQ 会话', () => {
     data: { turn: 7, message: { content: [{ type: 'text', text }] } },
   });
 
-  async function runExternalTurn(target: ReplyTarget, externalTurns?: 'off' | 'c2c' | 'all') {
+  async function runExternalTurn(target: ReplyTarget, externalTurns?: 'off' | 'c2c' | 'all', rpcId?: string) {
     const bot = createBot(createSession());
     const record = createRecord(target);
     const manager = {
@@ -491,7 +491,9 @@ describe('OutboundRouter: 主动推送策略与非 QQ 会话', () => {
     const outbound = createOutboundHandler(manager, bot, config, createLogger());
 
     outbound.routeSessionEvent(sid, { type: 'turn/start', data: { turn: 7 } });
-    outbound.routeSessionEvent(sid, externalInput);
+    outbound.routeSessionEvent(sid, { ...externalInput, data: {
+      ...externalInput.data, source: { ...externalInput.data.source, rpcId },
+    } });
     outbound.routeSessionEvent(sid, reply('from desktop'));
     await vi.advanceTimersByTimeAsync(0);
     return bot;
@@ -512,6 +514,11 @@ describe('OutboundRouter: 主动推送策略与非 QQ 会话', () => {
     } else {
       expect(bot.sendMarkdown).not.toHaveBeenCalled();
     }
+  });
+
+  it('网页通话回合不会推到 QQ，即使启用了外部回合推送', async () => {
+    const bot = await runExternalTurn(c2cTarget, 'all', 'dafec411-89ab-4123-8123-123456789abc');
+    expect(bot.sendMarkdown).not.toHaveBeenCalled();
   });
 
   it('非 QQ 会话的回合不进入状态表', () => {

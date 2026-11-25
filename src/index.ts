@@ -13,6 +13,7 @@ import { getProfileDir, resolveEnv } from './shared/index.ts';
 import { installMemoryTool, withMemoryPrompt } from './memory/install.ts';
 import { installMemoryOrganizer } from './memory/organizer.ts';
 import { ensureDefaultPersona } from './persona/install.ts';
+import { claimBoundOwner } from './runtime/account-service.ts';
 import { ensureCredentials, persistCredentialsToProfile, registerBoundCredentialRoutes } from './setup/index.ts';
 import type { Logger } from './types.ts';
 
@@ -52,6 +53,16 @@ export async function apply(ctx: Context, config: ImQQBotConfig): Promise<void> 
           // null 包括：扫码取消、手动提交（已另行持久化）、流程失败
           logger.info('扫码绑定流程结束（未获取凭据或已手动配置）');
           return;
+        }
+
+        if (credentials.userOpenid) {
+          try {
+            if (claimBoundOwner(credentials.appId, credentials.userOpenid)) {
+              logger.info(`扫码用户已自动认领为主人: ${credentials.userOpenid}`);
+            }
+          } catch (err) {
+            logger.warn(`扫码用户自动认领主人失败: ${err instanceof Error ? err.message : String(err)}`);
+          }
         }
 
         // 持久化到 profile：成功则等待热更新重载，失败则用凭据直接启动。

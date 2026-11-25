@@ -13,7 +13,7 @@ export declare class PersonaEvolution {
     private running;
     constructor(config: ImQQBotConfig, logger: Logger, allowed: (peer: string) => boolean, idle: (peer: string) => boolean);
     private log;
-    add(peer: string, text: string): void;
+    add(peer: string, text: string, role?: 'user' | 'assistant'): void;
     stop(): void;
     private tick;
     private memoryContext;

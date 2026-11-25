@@ -14,6 +14,7 @@ export type DeliveryMode = 'passive' | 'proactive';
 export interface TurnInputSource {
     kind?: string;
     plugin?: string;
+    rpcId?: string;
     form?: string;
 }
 export interface TurnDeliveryState {

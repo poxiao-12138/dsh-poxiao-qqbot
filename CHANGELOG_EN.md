@@ -6,6 +6,14 @@ This file records significant dsh-qqbot updates from a product perspective, focu
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
+## [0.2.31] - 2026-11-25
+
+- Fix proactive private wake and persona evolution not triggering for new QR-bound or single-user allowlist setups (auto-claim QR owner, single-user private allowlist fallback without escalating slash-command permissions, and live owner status in settings).
+- Decouple persona cards from plugin protocol rules: inject voice and sticker instructions dynamically from feature toggles; rewrite all 6 built-in persona templates (with the default daughter template modeled after Dafeiyu) for more natural conversational warmth, and replace attendance-style proactive wake prompts.
+- Fix persona evolution (paired user/assistant samples, prevent rule concatenation lockup, fix Obsidian scope matching, raise idle review threshold) and memory organizer (zstd CLI fallback, 60-minute failure backoff, first-person memory takeaways).
+- Redesign settings UI with card sections, collapsible advanced groups, clickable voice cards, and a 2-column persona template grid.
+- Keep browser call turns in DSH instead of pushing them back to QQ.
+
 ## [0.2.29] - 2026-11-18
 
 - The first voice preset is now the shared Dafeiyu (Poxiao Edition) voice, with a preview from the supplied video.

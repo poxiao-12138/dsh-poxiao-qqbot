@@ -10,7 +10,10 @@ import type { Context } from '@deepseek-ai/cordis';
 import type {} from '@deepseek-ai/dsh-agent';
 import { HUMMING_PROMPT } from '../voice/emotion.ts';
 import type { QQScope } from './scope.ts';
-import { RULES_SECTION_NAME, RULES_ORDER, RULES_TEXT } from './rules.ts';
+import {
+  RULES_SECTION_NAME, RULES_ORDER, RULES_TEXT,
+  VOICE_DIRECTIVE_PROMPT, VOICE_EMOTION_PROMPT, STICKER_PROMPT,
+} from './rules.ts';
 import { PERSONA_SECTION_NAME, PERSONA_ORDER, selectPersonaText } from './persona.ts';
 import { EXTRA_SECTION_NAME, EXTRA_ORDER, selectExtraPrompt } from './extra.ts';
 import { TURN_META_CONTEXT_NAME, TURN_META_ORDER } from './turn-meta.ts';
@@ -27,6 +30,9 @@ export interface QQPromptEntry {
   /** 人设 role-card markdown（可为空）。 */
   personaCard(): string;
   voiceAvailable?(): boolean;
+  voiceMode?(): 'voiceOnly' | 'both' | 'text' | 'auto';
+  voiceEmotion?(): boolean;
+  stickersAvailable?(): boolean;
   evolution?(): string;
   /** 补充提示词（群/私分字段）。 */
   extraPrompts(): { group?: string; direct?: string };
@@ -47,7 +53,17 @@ export function installQQPrompt(agentCtx: Context, entry: QQPromptEntry): QQProm
   const disposers: Array<() => void> = [];
   disposers.push(service.section({
     name: RULES_SECTION_NAME, order: RULES_ORDER,
-    text: () => [RULES_TEXT, entry.voiceAvailable?.() ? HUMMING_PROMPT : '', entry.evolution?.()].filter(Boolean).join('\n'),
+    text: () => {
+      const voiceOn = Boolean(entry.voiceAvailable?.());
+      return [
+        RULES_TEXT,
+        voiceOn && entry.voiceMode?.() === 'auto' ? VOICE_DIRECTIVE_PROMPT : '',
+        voiceOn && entry.voiceEmotion?.() !== false ? VOICE_EMOTION_PROMPT : '',
+        voiceOn ? HUMMING_PROMPT : '',
+        entry.stickersAvailable?.() ? STICKER_PROMPT : '',
+        entry.evolution?.(),
+      ].filter(Boolean).join('\n');
+    },
   }));
   disposers.push(service.section({ name: PERSONA_SECTION_NAME, order: PERSONA_ORDER, text: () => selectPersonaText(entry.personaCard(), entry.scope) }));
   disposers.push(service.section({ name: EXTRA_SECTION_NAME, order: EXTRA_ORDER, text: () => selectExtraPrompt(entry.extraPrompts(), entry.scope) }));

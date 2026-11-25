@@ -48,11 +48,16 @@ describe('installQQPrompt (DSH section/context 注册)', () => {
     expect(ct).not.toContain('别刷屏'); expect(ct).not.toContain('GROUP_EXTRA');
     gh.dispose();
   });
-  it('built-in rules always render; persona/extra empty by default', () => {
+  it('built-in rules always render; voice/sticker rules follow capability toggles', () => {
     const sp = fakeSystemPrompt();
     installQQPrompt(sp.ctx, entry({ personaCard: () => '', extraPrompts: () => ({}) }));
-    expect(sp.renderSections()).toContain('情境＋说话意图＋语气重点');
+    expect(sp.renderSections()).toContain('你正在 QQ 聊天中与用户对话');
+    expect(sp.renderSections()).not.toContain('情境＋说话意图＋语气重点');
     expect([...sp.sections.keys()].sort()).toEqual(['qqbot:extra', 'qqbot:persona', 'qqbot:rules']);
+
+    const voiceSp = fakeSystemPrompt();
+    installQQPrompt(voiceSp.ctx, entry({ personaCard: () => '', extraPrompts: () => ({}), voiceAvailable: () => true }));
+    expect(voiceSp.renderSections()).toContain('情境＋说话意图＋语气重点');
   });
   it('lazily reads persona/extra so edits apply without reinstall', () => {
     const sp = fakeSystemPrompt(); let extra = 'OLDEX'; let persona = '# X' + NL + 'OLDPER';

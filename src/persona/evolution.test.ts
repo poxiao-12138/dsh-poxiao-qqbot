@@ -68,18 +68,44 @@ it('applies an explicit owner adjustment once the chat is idle and uses only ver
   expect(update).toHaveBeenCalledTimes(1);
 });
 
-it('uses the configured idle window for ordinary chat and rejects invalid model output', async () => {
+it('uses the configured idle window for ordinary chat after minimum messages and rejects invalid model output', async () => {
   update.mockImplementation(() => Promise.resolve(Response.json({
     choices: [{ message: { content: '{"index":4,"rule":"这个下标无效"}' } }],
   })));
   evolution = new PersonaEvolution(config, logger, () => true, () => true);
   evolution.add('owner', '刚到家，今天有点热');
+  evolution.add('owner', '刚吃完饭');
+  evolution.add('owner', '在看新视频');
+  await vi.advanceTimersByTimeAsync(35 * 60_000);
+  expect(update).not.toHaveBeenCalled();
+
+  evolution.add('owner', '先歇会儿了');
   await vi.advanceTimersByTimeAsync(29 * 60_000);
   expect(update).not.toHaveBeenCalled();
   await vi.advanceTimersByTimeAsync(60_000);
   expect(update).toHaveBeenCalledTimes(1);
   expect(fs.readFileSync(cardPath, 'utf8')).toBe(baseCard);
   expect(fs.readFileSync(path.join(paths.home, 'persona-evolution.log'), 'utf8')).toContain('event=started trigger=idle');
+});
+
+it('captures paired user and assistant samples and ignores assistant messages when queue is empty', async () => {
+  evolution = new PersonaEvolution(config, logger, () => true, () => true);
+  evolution.add('owner', '早安', 'assistant');
+  await vi.advanceTimersByTimeAsync(35 * 60_000);
+  expect(update).not.toHaveBeenCalled();
+
+  evolution.add('owner', '刚和老板顶了一下，有点烦', 'user');
+  evolution.add('owner', '不吃就不吃。别把交付砸了。', 'assistant');
+  evolution.add('owner', '以后我吐槽的时候你别急着讲道理', 'user');
+  await vi.advanceTimersByTimeAsync(5_000);
+  expect(update).toHaveBeenCalledTimes(1);
+  const body = JSON.parse(update.mock.calls[0]![1].body);
+  const sentSamples = JSON.parse(body.messages[1].content).samples;
+  expect(sentSamples).toEqual([
+    { role: 'user', text: '刚和老板顶了一下，有点烦', explicit: false },
+    { role: 'assistant', text: '不吃就不吃。别把交付砸了。', explicit: false },
+    { role: 'user', text: '以后我吐槽的时候你别急着讲道理', explicit: true },
+  ]);
 });
 
 it('does not cap successful explicit attempts per day', async () => {

@@ -24,6 +24,27 @@ export interface AccountAccessDeps {
   pairing?: PairingService;
 }
 
+/**
+ * 扫码绑定后自动把绑定者认领为主人（幂等、保留已有资料）。
+ */
+export function claimBoundOwner(
+  appId: string,
+  userOpenid: string | undefined,
+  dataDir: string = PLUGIN_HOME,
+): boolean {
+  const openid = userOpenid?.trim();
+  if (!appId || !openid) return false;
+  const store = new MemberStore(dataDir, appId);
+  const existing = store.memberProfiles()[openid];
+  store.claimOwner(openid, {
+    nickname: existing?.nickname ?? '',
+    scene: existing?.scene ?? 'c2c',
+    sceneName: existing?.sceneName ?? '私聊',
+    claimedAt: existing?.claimedAt ?? Date.now(),
+  });
+  return true;
+}
+
 export class AccountAccessService {
   readonly store: MemberStore;
   readonly pairing: PairingService;
@@ -210,4 +231,25 @@ export class AccountAccessService {
     return commandAccessError(mode, actor, mode === 'allowlist' && this.isOwner(actor));
   }
   isOwner(actor?: string): boolean { return !!actor && this.store.ownerIds().includes(actor); }
+
+  /**
+   * 用于私聊主动联系与角色自我进化的有效主人列表：
+   * - 命令白名单（owners）非空时，严格只认 owners；
+   * - owners 为空且私聊处于白名单模式、名单恰有 1 人时（典型个人机器人 / 扫码绑定存量用户），
+   *   兜底将该唯一私聊账号视为主人，不影响斜杠命令白名单权限。
+   */
+  effectiveOwnerIds(): string[] {
+    const owners = this.store.ownerIds();
+    if (owners.length > 0) return owners;
+    const access = this.currentAccess();
+    if (access.c2cMode === 'allowlist' && access.c2cAllow.length === 1) {
+      const solo = access.c2cAllow[0]?.trim();
+      return solo ? [solo] : [];
+    }
+    return [];
+  }
+
+  isEffectiveOwner(actor?: string): boolean {
+    return !!actor && this.effectiveOwnerIds().includes(actor);
+  }
 }

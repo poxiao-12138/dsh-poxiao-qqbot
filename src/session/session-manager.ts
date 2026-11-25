@@ -145,9 +145,12 @@ export class SessionManager {
       this.promptHandles.set(agent, installQQPrompt(agent.ctx, {
         scope,
         personaCard: () => '',
-        evolution: () => scope === 'c2c' && this.accountAccess?.isOwner(peer) ? evolutionPrompt(this.config) : '',
+        evolution: () => scope === 'c2c' && this.accountAccess?.isEffectiveOwner(peer) ? evolutionPrompt(this.config) : '',
         voiceAvailable: () => Boolean(this.config.voice?.enabled && this.config.voice.mode !== 'text'
           && (scope === 'c2c' || this.config.voice.groupVoice)),
+        voiceMode: () => this.config.voice?.mode,
+        voiceEmotion: () => this.config.voice?.emotionMarkers !== false,
+        stickersAvailable: () => this.config.stickers?.enabled !== false,
         extraPrompts: () => ({ group: this.config.groupPrompt, direct: (this.config.directPrompt ?? '') + (scope === 'c2c' ? worldPrompt() : '') }),
       }));
       if (scope === 'c2c') this.worldToolHandles.set(agent, installWorldTools(agent.ctx));

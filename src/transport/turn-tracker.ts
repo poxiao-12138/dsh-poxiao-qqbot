@@ -47,6 +47,7 @@ export interface TurnTrackerOptions {
 interface TrackedTurn {
   state: TurnDeliveryState;
   idleWake?: boolean;
+  webCall?: boolean;
   /** 本回合认领的 QQ 入站消息 id，回合结束时释放登记 */
   inputs: Set<string>;
 }
@@ -100,6 +101,14 @@ export class TurnTracker implements DeliveryTargetResolver {
     const qqOwned = this.inputs.has(messageId);
     if (qqOwned && messageId !== undefined) tracked.inputs.add(messageId);
 
+    // The call client keeps the UUID wire format and reserves its first group.
+    if (source?.kind === 'user' && !qqOwned && typeof source.rpcId === 'string'
+      && /^dafec411-[a-f0-9]{4}-4[a-f0-9]{3}-[89ab][a-f0-9]{3}-[a-f0-9]{12}$/i.test(source.rpcId)) {
+      tracked.webCall = true;
+      this.logger.info('im-qqbot: browser call turn stays in DSH');
+      return;
+    }
+
     const before = deliveryMode(tracked.state);
     noteTurnInput(tracked.state, classifyTurnInput(source, qqOwned));
     if (before === 'proactive' || deliveryMode(tracked.state) !== 'proactive') return;
@@ -142,6 +151,7 @@ export class TurnTracker implements DeliveryTargetResolver {
     const base = this.addressOf(sessionId);
     if (base === undefined) return undefined;
     const tracked = this.turns.get(sessionId);
+    if (tracked?.webCall) return undefined;
     if (tracked === undefined || deliveryMode(tracked.state) === 'passive') {
       return { target: base, proactive: false };
     }

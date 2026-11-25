@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { RULES_TEXT } from './rules.ts';
+import { RULES_TEXT, VOICE_EMOTION_PROMPT } from './rules.ts';
 import { parsePersonaSections, selectPersonaText, roleSectionReport } from './persona.ts';
 import { selectExtraPrompt, EXTRA_MAX_CHARS } from './extra.ts';
 import { relTime, clockOf, turnMetaText } from './turn-meta.ts';
@@ -9,7 +9,7 @@ describe('prompt rules', () => {
   it('declares the channel and shared conversation and voice rules', () => {
     expect(RULES_TEXT).toContain('QQ');
     expect(RULES_TEXT).toContain('问的是你，就用自己的态度答一句');
-    expect(RULES_TEXT).toContain('情境＋说话意图＋语气重点');
+    expect(VOICE_EMOTION_PROMPT).toContain('情境＋说话意图＋语气重点');
   });
 });
 

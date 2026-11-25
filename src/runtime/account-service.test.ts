@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { ConfigSchema } from '../config.ts';
 import { MemberStore } from './member-store.ts';
-import { AccountAccessService } from './account-service.ts';
+import { AccountAccessService, claimBoundOwner } from './account-service.ts';
 import { PairingService } from './pairing-service.ts';
 import { readProfileAccess, updateProfileConfig } from '../setup/persist.ts';
 import { whitelistEntries } from '../client/whitelist-export.ts';
@@ -247,5 +247,56 @@ describe('membership persistence and pairing scope', () => {
     updateProfileConfig({ access: { c2cMode: 'disabled', c2cAllow: ['keep'], groupMode: 'open', groupAllow: [], commandMode: 'disabled' } }, profile.dir);
     expect(service.addManualMember('allow-group', 'team').ok).toBe(true);
     expect(readProfileAccess(undefined, profile.dir)).toMatchObject({ c2cMode: 'disabled', c2cAllow: ['keep'], groupMode: 'open', groupAllow: ['team'], commandMode: 'disabled' });
+  });
+});
+
+describe('effectiveOwnerIds and claimBoundOwner', () => {
+  it('prefers explicit owners over c2cAllow without adding extra c2c users', () => {
+    const { service } = fixture();
+    updateProfileConfig({ access: { c2cMode: 'allowlist', c2cAllow: ['alice', 'bob'], groupMode: 'allowlist', groupAllow: [], commandMode: 'allowlist' } }, profile.dir);
+    expect(service.addManualMember('owner', 'alice:Alice').ok).toBe(true);
+    expect(service.effectiveOwnerIds()).toEqual(['alice']);
+    expect(service.isEffectiveOwner('alice')).toBe(true);
+    expect(service.isEffectiveOwner('bob')).toBe(false);
+  });
+
+  it('falls back to a sole c2c allowlist member for proactive wake without granting slash command access', () => {
+    const { service } = fixture();
+    updateProfileConfig({ access: { c2cMode: 'allowlist', c2cAllow: ['solo-user'], groupMode: 'allowlist', groupAllow: [], commandMode: 'allowlist' } }, profile.dir);
+    expect(service.effectiveOwnerIds()).toEqual(['solo-user']);
+    expect(service.isEffectiveOwner('solo-user')).toBe(true);
+    expect(service.isOwner('solo-user')).toBe(false);
+    expect(service.commandAccessError('solo-user')).toBeDefined();
+  });
+
+  it('returns empty effectiveOwnerIds when owners are empty and c2c allowlist is not a single user', () => {
+    const { service } = fixture();
+    for (const access of [
+      { c2cMode: 'allowlist' as const, c2cAllow: [] },
+      { c2cMode: 'allowlist' as const, c2cAllow: ['a', 'b'] },
+      { c2cMode: 'open' as const, c2cAllow: ['solo'] },
+      { c2cMode: 'disabled' as const, c2cAllow: ['solo'] },
+    ]) {
+      updateProfileConfig({ access: { ...access, groupMode: 'allowlist', groupAllow: [], commandMode: 'allowlist' } }, profile.dir);
+      expect(service.effectiveOwnerIds()).toEqual([]);
+    }
+  });
+
+  it('claimBoundOwner records userOpenid idempotently and ignores empty openids', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'qq-claim-bound-'));
+    try {
+      expect(claimBoundOwner('app-1', undefined, dir)).toBe(false);
+      expect(claimBoundOwner('app-1', '   ', dir)).toBe(false);
+      expect(new MemberStore(dir, 'app-1').ownerIds()).toEqual([]);
+
+      expect(claimBoundOwner('app-1', 'qr-owner', dir)).toBe(true);
+      const store = new MemberStore(dir, 'app-1');
+      store.setMemberNickname('qr-owner', '大肥鱼爸爸');
+      expect(claimBoundOwner('app-1', 'qr-owner', dir)).toBe(true);
+      expect(store.ownerIds()).toEqual(['qr-owner']);
+      expect(store.memberProfiles()['qr-owner']?.nickname).toBe('大肥鱼爸爸');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

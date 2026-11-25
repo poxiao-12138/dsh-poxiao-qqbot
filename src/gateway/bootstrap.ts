@@ -88,20 +88,20 @@ export async function bootstrapGateway(
   let stopping = false;
   const evolution = new PersonaEvolution(config, logger, (peer) => {
     const account = manager.accountAccess;
-    if (stopping || !account?.isOwner(peer)) return false;
+    if (stopping || !account?.isEffectiveOwner(peer)) return false;
     const access = account.currentAccess();
     return access.c2cMode === 'open' || (access.c2cMode === 'allowlist' && access.c2cAllow.includes(peer));
   }, (peer) => {
     const record = manager.getSessionRecord('c2c', peer);
     return record ? record.agent.status === 'idle' : manager.hasSavedPrivateSession(peer);
   });
-  const observePrivate = (peer: string, text: string) => evolution.add(peer, text);
+  const observePrivate = (peer: string, text: string) => evolution.add(peer, text, 'user');
   const wakeBlockReason = (peer: string): string | undefined => {
     if (config.proactiveWakeEnabled === false) return '主动联系已关闭';
     if (stopping) return '插件正在停止';
     if (!connected) return 'QQ 网关未连接';
     const account = manager.accountAccess;
-    if (!account?.isOwner(peer)) return '未绑定为主人';
+    if (!account?.isEffectiveOwner(peer)) return '未绑定为主人';
     const access = account.currentAccess();
     if (access.c2cMode !== 'open' && !(access.c2cMode === 'allowlist' && access.c2cAllow.includes(peer))) {
       return '主人未获私聊权限';
@@ -248,6 +248,15 @@ export async function bootstrapGateway(
   (ctx as unknown as { on(event: string, handler: (...args: unknown[]) => void, options?: { global?: boolean }): void })
     .on('session/event', (...args) => {
       const [session, event] = args as Parameters<typeof outbound.routeSessionEvent>;
+      if (event.type === 'assistant/message') {
+        const target = manager.deliveryAddress(session.header.id);
+        if (target?.scope === 'c2c') {
+          const data = (event as { data?: { message?: { content?: Array<{ type?: string; text?: string }> }; content?: Array<{ type?: string; text?: string }> } }).data;
+          const blocks = data?.message?.content ?? data?.content ?? [];
+          const replyText = blocks.filter((b) => b.type === 'text' && b.text).map((b) => String(b.text)).join(' ').trim();
+          if (replyText) evolution.add(target.targetId, replyText, 'assistant');
+        }
+      }
       outbound.routeSessionEvent(session, event);
     }, { global: true });
 
@@ -308,15 +317,15 @@ export async function bootstrapGateway(
   const markConnected = (event: 'ready' | 'resumed') => {
     connected = true;
     if (config.proactiveWakeEnabled !== false) {
-      const owners = manager.accountAccess?.pairStatus().owners ?? [];
+      const owners = manager.accountAccess?.effectiveOwnerIds() ?? [];
       let scheduled = 0;
-      for (const { openid } of owners) {
+      for (const openid of owners) {
         if (mayWake(openid) && manager.hasSavedPrivateSession(openid)) {
           proactiveWake.watch(openid, false);
           scheduled++;
         }
       }
-      logProactiveWake(`机器人在线，符合检查条件的私聊数=${scheduled} event=${event}`);
+      logProactiveWake(`机器人在线，符合检查条件的私聊数=${scheduled} event=${event}${owners.length === 0 ? '（未认领主人）' : ''}`);
     } else {
       logProactiveWake('机器人在线，主动联系已关闭');
     }

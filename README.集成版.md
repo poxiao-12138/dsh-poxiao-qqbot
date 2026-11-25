@@ -12,7 +12,7 @@ npm test
 用 DSH 已配置的本机链接加载开发版。客户端构建后，重开 DSH 即可查看设置页改动。
 
 ```sh
-npm run pack:release -- 0.2.29
+npm run pack:release -- 0.2.31
 ```
 
 打包命令会构建当前代码，把发布包放到工程内的 `releases/`。历史安装包保存在 `releases/archive/`。
